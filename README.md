@@ -24,7 +24,7 @@ To run Edge Functions locally, install the Supabase CLI and Docker, start the lo
 1. Create a Supabase project and enable Discord under **Authentication → Sign In / Providers**.
 2. In Discord Developer Portal, set the OAuth redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`.
 3. Under **Authentication → URL Configuration**, set the Cloudflare Pages URL as Site URL and add the production URL plus `http://localhost:5173` as redirect URLs.
-4. Add `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_ID` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once. This applies the migration and deploys the Edge Functions.
+4. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once. This applies the migration and deploys the Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
 5. Sign in once, find your user UUID under **Authentication → Users**, then authorize it in SQL Editor:
 
    ```sql
@@ -43,8 +43,9 @@ To run Edge Functions locally, install the Supabase CLI and Docker, start the lo
 2. Set build command to `npm ci && npm run build`, output directory to `dist`, and `NODE_VERSION` to `22`.
 3. Add the two `VITE_SUPABASE_*` build variables above. Cloudflare Pages then builds frontend changes pushed to `main`.
 4. In GitHub repository **Settings → Secrets and variables → Actions → New repository secret**, add:
-   - `SUPABASE_ACCESS_TOKEN`: a scoped Supabase access token with database migration and Edge Function deployment permissions.
+   - `SUPABASE_ACCESS_TOKEN`: a scoped Supabase access token for this project, with project settings read, production branches read, and Edge Functions read-write permissions.
    - `SUPABASE_PROJECT_ID`: the Supabase project reference.
+   - `SUPABASE_DB_URL`: the Session pooler connection string from **Supabase Dashboard → Connect**. Use the Session pooler for IPv4-only GitHub runners, replace `[YOUR-PASSWORD]` with the database password, and store it only as a GitHub secret.
 
 The workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Configure `ROBLOX_OPEN_CLOUD_API_KEY` and the creator settings directly in Supabase, never in GitHub or Cloudflare.
 
