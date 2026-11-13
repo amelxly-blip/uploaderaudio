@@ -19,6 +19,16 @@ interface CredentialInput {
 
 const API_KEY_MAX_LENGTH = 4096;
 
+function logCredentialFailure(operation: string, error?: unknown): void {
+  const candidate = error && typeof error === "object" && "code" in error
+    ? error.code
+    : undefined;
+  const code = typeof candidate === "string" && /^[A-Z0-9_]+$/.test(candidate)
+    ? candidate
+    : "unknown";
+  console.error("[roblox-credentials] operation failed", { operation, code });
+}
+
 function encryptionSecret(): string {
   const secret = Deno.env.get("AUTH_BRIDGE_SECRET") ?? "";
   if (new TextEncoder().encode(secret).byteLength < 32) {
@@ -60,7 +70,10 @@ export async function getUserRobloxConfig(discordUserId: string): Promise<Roblox
     .select("creator_type,creator_id,api_key_ciphertext,api_key_nonce")
     .eq("discord_user_id", discordUserId)
     .maybeSingle();
-  if (error) throw new Error("Could not retrieve saved Roblox credentials.");
+  if (error) {
+    logCredentialFailure("read", error);
+    throw new Error("Could not retrieve saved Roblox credentials.");
+  }
   if (!data) return null;
 
   const creatorType = data.creator_type;
@@ -115,14 +128,23 @@ export async function saveUserRobloxConfig(discordUserId: string, body: unknown)
     .select("discord_user_id")
     .eq("discord_user_id", discordUserId)
     .maybeSingle();
-  if (lookupError) throw new Error("Could not check existing Roblox credentials.");
+  if (lookupError) {
+    logCredentialFailure("check-existing", lookupError);
+    throw new Error("Could not check existing Roblox credentials.");
+  }
   if (!input.apiKey && !existing) {
     throw new HttpResponseError(400, "Masukkan API key Roblox untuk konfigurasi pertama.");
   }
 
   const updatedAt = new Date().toISOString();
   if (input.apiKey) {
-    const encrypted = await encryptApiKey(input.apiKey, encryptionSecret(), discordUserId);
+    let encrypted: Awaited<ReturnType<typeof encryptApiKey>>;
+    try {
+      encrypted = await encryptApiKey(input.apiKey, encryptionSecret(), discordUserId);
+    } catch (error) {
+      logCredentialFailure("encrypt");
+      throw error;
+    }
     const { error } = await adminClient
       .from("discord_roblox_credentials")
       .upsert({
@@ -133,7 +155,10 @@ export async function saveUserRobloxConfig(discordUserId: string, body: unknown)
         api_key_nonce: encrypted.nonce,
         updated_at: updatedAt,
       });
-    if (error) throw new Error("Could not save encrypted Roblox credentials.");
+    if (error) {
+      logCredentialFailure("insert-or-update", error);
+      throw new Error("Could not save encrypted Roblox credentials.");
+    }
   } else {
     const { error } = await adminClient
       .from("discord_roblox_credentials")
@@ -143,7 +168,10 @@ export async function saveUserRobloxConfig(discordUserId: string, body: unknown)
         updated_at: updatedAt,
       })
       .eq("discord_user_id", discordUserId);
-    if (error) throw new Error("Could not update Roblox creator configuration.");
+    if (error) {
+      logCredentialFailure("update-creator", error);
+      throw new Error("Could not update Roblox creator configuration.");
+    }
   }
 
   return {
