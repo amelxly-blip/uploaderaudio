@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient, type User } from "npm:@supabase/supabase-js@2.119.0";
+import { createClient } from "npm:@supabase/supabase-js@2.119.0";
+import { verifyToken } from "./auth-token.js";
 
 type Json = Record<string, unknown>;
 
@@ -23,11 +24,10 @@ function defaultKey(name: string, fallbackName: string): string {
   return Deno.env.get(fallbackName) ?? "";
 }
 
-const publishableKey = defaultKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
 const secretKey = defaultKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
 
-if (!supabaseUrl || !publishableKey || !secretKey) {
-  throw new Error("Supabase URL, publishable key, and server secret key must be configured.");
+if (!supabaseUrl || !secretKey) {
+  throw new Error("Supabase URL and server secret key must be configured.");
 }
 
 export const adminClient = createClient(supabaseUrl, secretKey, {
@@ -72,27 +72,49 @@ export function preflightResponse(request: Request): Response {
   return new Response(null, { status: 204, headers: responseHeaders(request) });
 }
 
-export async function authenticate(request: Request): Promise<{ user: User; client: SupabaseClient }> {
+export interface AuthenticatedUser {
+  id: string;
+}
+
+export async function authenticate(request: Request): Promise<{ user: AuthenticatedUser }> {
   const authorization = request.headers.get("Authorization");
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) throw new HttpResponseError(401, "Masuk dengan Discord untuk melanjutkan.");
 
-  const client = createClient(supabaseUrl, publishableKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data.user) throw new HttpResponseError(401, "Sesi login tidak valid. Masuk lagi dengan Discord.");
-  return { user: data.user, client };
+  const bridgeSecret = Deno.env.get("AUTH_BRIDGE_SECRET");
+  if (!bridgeSecret) throw new Error("Cloudflare auth bridge secret is not configured.");
+  const claims = await verifyToken(token, bridgeSecret);
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    claims?.iss !== "mchlern-cloudflare-pages"
+    || claims.aud !== "mchlern-supabase-edge"
+    || typeof claims.sub !== "string"
+    || !/^[0-9]{17,20}$/.test(claims.sub)
+    || !Number.isInteger(claims.iat)
+    || !Number.isInteger(claims.exp)
+    || claims.iat > now + 5
+    || claims.exp <= now
+    || claims.exp - claims.iat > 60
+  ) {
+    throw new HttpResponseError(401, "Sesi Discord tidak valid. Masuk lagi.");
+  }
+  return { user: { id: claims.sub } };
 }
 
-export async function requireAuthorized(userId: string): Promise<void> {
+export async function isAuthorized(discordUserId: string): Promise<boolean> {
   const { data, error } = await adminClient
-    .from("authorized_uploaders")
-    .select("user_id")
-    .eq("user_id", userId)
+    .from("authorized_discord_uploaders")
+    .select("discord_user_id")
+    .eq("discord_user_id", discordUserId)
     .maybeSingle();
   if (error) throw new Error("Could not verify uploader access.");
-  if (!data) throw new HttpResponseError(403, "Akun ini belum diizinkan oleh pemilik uploader.");
+  return Boolean(data);
+}
+
+export async function requireAuthorized(discordUserId: string): Promise<void> {
+  if (!await isAuthorized(discordUserId)) {
+    throw new HttpResponseError(403, "Akun Discord ini belum diizinkan oleh pemilik uploader.");
+  }
 }
 
 export class HttpResponseError extends Error {

@@ -543,22 +543,23 @@
           <div class="page-heading">
             <div class="eyebrow">PENGATURAN SERVER</div>
             <h1>Setup Roblox</h1>
-            <p class="page-intro">Kunci Open Cloud hanya diatur di environment server. Halaman ini tidak mengirim ataupun menyimpan API key di browser.</p>
+            <p class="page-intro">Kunci Open Cloud dan kunci penghubung autentikasi disimpan sebagai secrets Supabase Edge Function. Halaman ini tidak mengirim ataupun menyimpan API key di browser.</p>
           </div>
           <section class="surface setup-card">
             <div class="surface-title">Status koneksi</div>
-            <div class="surface-subtitle">Konfigurasi aktif dibaca dari environment server.</div>
+            <div class="surface-subtitle">Status Open Cloud dibaca dari Supabase dan secrets tidak ditampilkan.</div>
             <div class="config-row"><div><div class="config-caption">Creator tujuan</div><div class="config-value" id="setupCreator">Belum diatur</div></div><span class="config-pill" id="setupCloudBadge">BELUM AKTIF</span></div>
             <div class="config-row"><div><div class="config-caption">Open Cloud API key</div><div class="config-value">Disimpan di server · tidak ditampilkan</div></div><span class="config-pill" id="setupKeyBadge">BELUM AKTIF</span></div>
           </section>
           <section class="surface setup-card">
             <div class="surface-title">Menghubungkan Open Cloud</div>
-            <div class="surface-subtitle">Buat key dengan akses minimal, lalu tambahkan pengaturan di server tempat aplikasi dijalankan.</div>
+            <div class="surface-subtitle">Buat key dengan akses minimal, lalu simpan konfigurasi server di Supabase.</div>
             <div class="guide-list">
               <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat API key resmi</b>Di Creator Dashboard, pilih API Keys lalu beri akses Assets dengan izin yang diperlukan untuk creator yang akan mengunggah.</div></div>
-              <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Atur server dan akses Discord</b>Atur <code>ROBLOX_OPEN_CLOUD_API_KEY</code>, <code>ROBLOX_CREATOR_TYPE</code>, dan <code>ROBLOX_CREATOR_ID</code>. Izinkan Discord ID yang dipercaya lewat <code>DISCORD_ALLOWED_USER_IDS</code> (pisahkan beberapa ID dengan koma). Simpan semua nilai di environment server.</div></div>
-              <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Batasi creator dan izin key</b>Gunakan tipe <code>user</code> atau <code>group</code>; creator ID diambil dari profil atau halaman grup. Pastikan API key dibatasi ke creator yang sesuai.</div></div>
-              <div class="guide-step"><span class="step-marker">4</span><div class="step-copy"><b>Simpan lalu periksa status</b>Restart server dan lihat status koneksi di halaman ini. Coba upload hanya untuk audio yang kamu miliki atau berizin.</div></div>
+              <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Simpan secrets di Supabase</b>Di Edge Functions → Secrets, atur <code>APP_ORIGINS</code>, <code>AUTH_BRIDGE_SECRET</code>, <code>ROBLOX_OPEN_CLOUD_API_KEY</code>, <code>ROBLOX_CREATOR_TYPE</code>, dan <code>ROBLOX_CREATOR_ID</code>. Samakan bridge secret dengan secret di Cloudflare Pages.</div></div>
+              <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Izinkan akun tepercaya</b>Salin Discord user ID, lalu tambahkan ke tabel <code>authorized_discord_uploaders</code> di Supabase. Login Discord saja tidak memberikan izin upload.</div></div>
+              <div class="guide-step"><span class="step-marker">4</span><div class="step-copy"><b>Batasi creator dan izin key</b>Gunakan tipe <code>user</code> atau <code>group</code>; creator ID diambil dari profil atau halaman grup. Pastikan API key dibatasi ke creator yang sesuai.</div></div>
+              <div class="guide-step"><span class="step-marker">5</span><div class="step-copy"><b>Periksa status koneksi</b>Simpan secrets lalu segarkan halaman ini. Coba upload hanya untuk audio yang kamu miliki atau berizin.</div></div>
             </div>
             <a class="external-link" href="https://create.roblox.com/docs/cloud/guides/usage-assets" target="_blank" rel="noreferrer">Panduan aset resmi Roblox ↗</a>
           </section>

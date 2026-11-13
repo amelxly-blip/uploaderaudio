@@ -420,13 +420,16 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 enabled = true
 
 [functions.roblox-status]
-verify_jwt = true
+verify_jwt = false
 
 [functions.roblox-upload]
-verify_jwt = true
+verify_jwt = false
 
 [functions.roblox-operation]
-verify_jwt = true
+verify_jwt = false
+
+[functions.roblox-history]
+verify_jwt = false
 # Directory under `supabase/` where declarative files are written.
 # declarative_schema_path = "./schemas"
 # JSON string passed through to pg-delta SQL formatting. When omitted, SQL is

@@ -33,7 +33,7 @@ Deno.serve(async (request: Request) => {
       .from("audio_uploads")
       .select("id,status,operation_path,asset_id,error_message")
       .eq("id", uploadId)
-      .eq("user_id", user.id)
+      .eq("discord_user_id", user.id)
       .maybeSingle();
     if (lookupError) throw new Error("Could not retrieve upload operation.");
     if (!upload) throw new HttpResponseError(404, "Status upload tidak ditemukan.");
@@ -68,7 +68,7 @@ Deno.serve(async (request: Request) => {
         .from("audio_uploads")
         .update({ status: "completed", asset_id: String(assetId), error_message: null })
         .eq("id", upload.id)
-        .eq("user_id", user.id);
+        .eq("discord_user_id", user.id);
       if (updateError) throw new Error("Could not save completed asset status.");
       return jsonResponse(request, { status: "completed", assetId: String(assetId) });
     }
@@ -78,7 +78,7 @@ Deno.serve(async (request: Request) => {
       .from("audio_uploads")
       .update({ status: "failed", error_message: message })
       .eq("id", upload.id)
-      .eq("user_id", user.id);
+      .eq("discord_user_id", user.id);
     if (updateError) throw new Error("Could not save rejected asset status.");
     return jsonResponse(request, { status: "failed", error: message });
   } catch (error) {

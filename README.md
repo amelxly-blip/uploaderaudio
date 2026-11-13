@@ -1,54 +1,56 @@
 # MCHLERN Audio Workspace
 
-Responsive Indonesian Roblox audio uploader. Cloudflare Pages hosts the static Vite frontend; Supabase Auth handles Discord sign-in, Postgres stores access and upload history under RLS, and Supabase Edge Functions upload and poll Roblox Open Cloud.
+Responsive Indonesian Roblox audio uploader. Cloudflare Pages serves the Vite frontend and handles Discord OAuth in Pages Functions. Supabase Postgres stores the Discord allowlist and upload history; Supabase Edge Functions upload and poll Roblox Open Cloud.
 
-The Roblox API key is stored only as a Supabase Edge Function secret. The app does not use Roblox cookies, expose API keys, or bypass Roblox moderation.
+The Discord session and Roblox API key stay server-side. The app does not use Roblox cookies, expose API keys, or bypass Roblox moderation.
 
-## Local frontend
+## Local checks
 
-1. Use Node.js 22.12 or newer.
-2. Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
-3. Install and start Vite:
+Use Node.js 22.12 or newer:
 
-   ```sh
-   npm ci
-   npm run dev
-   ```
+```sh
+npm ci
+npm test
+npm run build
+```
 
-4. Configure `http://localhost:5173` in Supabase Auth's allowed redirect URLs.
-
-To run Edge Functions locally, install the Supabase CLI and Docker, start the local Supabase stack, then copy `supabase/functions/.env.example` to `supabase/functions/.env`. See [Supabase local development](https://supabase.com/docs/guides/local-development/cli/getting-started).
+The Vite development server only serves the frontend. The `/api/*` authentication and proxy routes run as Cloudflare Pages Functions.
 
 ## Supabase setup
 
-1. Create a Supabase project and enable Discord under **Authentication → Sign In / Providers**.
-2. In Discord Developer Portal, set the OAuth redirect URI to `https://<project-ref>.supabase.co/auth/v1/callback`.
-3. Under **Authentication → URL Configuration**, set the Cloudflare Pages URL as Site URL and add the production URL plus `http://localhost:5173` as redirect URLs.
-4. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once. This applies the migration and deploys the Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
-5. Sign in once, find your user UUID under **Authentication → Users**, then authorize it in SQL Editor:
+1. Create a Supabase project. Discord sign-in does **not** need to be enabled in Supabase Auth.
+2. Set `AUTH_BRIDGE_SECRET` in **Edge Functions → Secrets**. Use a random secret of at least 32 bytes; set the exact same value as a Cloudflare Pages Function secret.
+3. Set `APP_ORIGINS` to the Cloudflare Pages origin, for example `https://uploaderaudio.pages.dev`. Add additional trusted origins as a comma-separated list.
+4. Set `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_TYPE` (`user` or `group`), and `ROBLOX_CREATOR_ID` in Edge Function secrets.
+5. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once to apply migrations and deploy Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
+6. To allow an uploader, enable Developer Mode in Discord, copy their Discord user ID, then run this in Supabase SQL Editor:
 
    ```sql
-   insert into public.authorized_uploaders (user_id)
-   values ('YOUR-SUPABASE-AUTH-USER-UUID')
-   on conflict (user_id) do nothing;
+   insert into public.authorized_discord_uploaders (discord_user_id)
+   values ('DISCORD_USER_ID')
+   on conflict (discord_user_id) do nothing;
    ```
 
-   Only add trusted users. The browser cannot grant itself access.
-6. Under **Edge Functions → Secrets**, set `APP_ORIGINS` to the production Cloudflare Pages origin (comma-separated if using more than one origin), `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_TYPE` (`user` or `group`), and `ROBLOX_CREATOR_ID`.
-7. Add your Supabase URL and publishable key as Cloudflare Pages build environment variables named `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. The publishable key is intended for browser use; RLS still controls database access.
+   Only add trusted Discord accounts. Login alone does not grant upload access.
 
-## Cloudflare Pages and automatic deploys
+## Cloudflare Pages and Discord
 
 1. Import this GitHub repository into Cloudflare Pages and select the `main` branch.
 2. Set build command to `npm ci && npm run build`, output directory to `dist`, and `NODE_VERSION` to `22`.
-3. Add the two `VITE_SUPABASE_*` build variables above. Cloudflare Pages then builds frontend changes pushed to `main`.
-4. In GitHub repository **Settings → Secrets and variables → Actions → New repository secret**, add:
-   - `SUPABASE_ACCESS_TOKEN`: a scoped Supabase access token for this project, with project settings read, production branches read, and Edge Functions read-write permissions.
-   - `SUPABASE_PROJECT_ID`: the Supabase project reference.
-   - `SUPABASE_DB_URL`: the Session pooler connection string from **Supabase Dashboard → Connect**. Use the Session pooler for IPv4-only GitHub runners, replace `[YOUR-PASSWORD]` with the database password, and store it only as a GitHub secret.
+3. Configure these production **Variables** for Pages Functions:
+   - `SUPABASE_URL`: `https://<project-ref>.supabase.co`
+   - `SUPABASE_PUBLISHABLE_KEY`: the project's publishable key
+   - `DISCORD_CLIENT_ID`: the Discord application's client ID
+   - `DISCORD_REDIRECT_URI`: `https://<your-pages-domain>/api/auth/discord/callback`
+4. Configure these production **Secrets** for Pages Functions:
+   - `DISCORD_CLIENT_SECRET`: the Discord application's client secret
+   - `DISCORD_SESSION_SECRET`: a random secret of at least 32 bytes
+   - `AUTH_BRIDGE_SECRET`: a separate random secret of at least 32 bytes; set the same value in Supabase Edge Function secrets
+5. In Discord Developer Portal, register the exact `DISCORD_REDIRECT_URI` above as an OAuth2 redirect URL. The callback must match the Pages domain and path exactly.
+6. Keep OAuth secrets out of Vite build variables, `.env`, GitHub, and source control. Preview deployments need their own matching callback URL and Discord OAuth redirect registration if you want to test login there.
 
-The workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Configure `ROBLOX_OPEN_CLOUD_API_KEY` and the creator settings directly in Supabase, never in GitHub or Cloudflare.
+The GitHub workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Configure the Roblox API key only in Supabase and Discord/session secrets only in Cloudflare.
 
 ## Tests
 
-Run `npm test` for mocked audio validation tests. Automated tests do not call Roblox or upload assets.
+`npm test` runs the mocked audio validation and auth-token tests. Tests do not call Discord or Roblox and do not upload assets.

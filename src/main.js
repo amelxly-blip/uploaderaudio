@@ -1,13 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const tabs = ["home", "upload", "setup", "history"];
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const supabase = supabaseUrl && supabasePublishableKey
-  ? createClient(supabaseUrl, supabasePublishableKey)
-  : null;
 
 let me = {
   authenticated: false,
@@ -44,16 +37,13 @@ function initials(name) {
 }
 
 function discordUser(user) {
-  if (!user) return null;
-  const metadata = user.user_metadata || {};
-  const username = metadata.full_name || metadata.name || metadata.user_name
-    || user.email?.split("@")[0]
-    || "Discord user";
+  if (!user || typeof user.id !== "string") return null;
+  const username = typeof user.username === "string" ? user.username : "Discord user";
   return {
     id: user.id,
     username,
-    displayName: metadata.name || metadata.full_name || username,
-    avatarUrl: metadata.avatar_url || metadata.picture || "",
+    displayName: typeof user.displayName === "string" ? user.displayName : username,
+    avatarUrl: typeof user.avatarUrl === "string" ? user.avatarUrl : "",
   };
 }
 
@@ -109,7 +99,7 @@ function updateIdentity() {
   $("#heroText").textContent = authorized
     ? "Pilih file, periksa creator tujuan, lalu kirim lewat Roblox Open Cloud."
     : user
-      ? "Login berhasil. Minta pemilik server menambahkan akunmu ke allowlist."
+      ? "Login berhasil. Minta pemilik uploader menambahkan akunmu ke allowlist."
       : "Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.";
   $("#heroAction").innerHTML = authorized
     ? "Mulai upload <span>↗</span>"
@@ -117,7 +107,7 @@ function updateIdentity() {
   $("#heroAction").onclick = () => authorized ? navigate("upload") : user ? logout() : login();
   $("#signedOutNotice").hidden = authorized;
   $("#signedOutNotice").textContent = user && !authorized
-    ? "Akun Discord ini belum mendapat akses. Minta pemilik uploader menambahkan akunmu ke allowlist Supabase."
+    ? "Akun Discord ini belum mendapat akses. Minta pemilik uploader menambahkan akunmu ke allowlist."
     : "Masuk memakai Discord untuk membuka upload, setup, dan riwayat. Login memakai OAuth resmi; kami tidak meminta password Discord atau Roblox.";
   $$("[data-lock]").forEach((lock) => { lock.hidden = authorized; });
   $("#railCloudDot").classList.toggle("ready", !!me.robloxConfigured);
@@ -133,15 +123,14 @@ function updateIdentity() {
 }
 
 async function loadStatus() {
-  if (!me.authenticated || !supabase) {
+  if (!me.authenticated) {
     me.authorized = false;
     me.robloxConfigured = false;
     me.creatorLabel = "";
     updateIdentity();
     return;
   }
-  const { data, error } = await supabase.functions.invoke("roblox-status");
-  if (error) throw new Error(await invocationError(error));
+  const data = await callFunction("roblox-status");
   me.authorized = data.authorized === true;
   me.robloxConfigured = data.robloxConfigured === true;
   me.apiKeyConfigured = data.apiKeyConfigured === true;
@@ -150,77 +139,136 @@ async function loadStatus() {
 }
 
 async function loadHistory() {
-  if (!supabase || !me.authorized) {
+  if (!me.authorized) {
     history = [];
     renderHistory();
     renderRecent();
     return;
   }
-  const { data, error } = await supabase
-    .from("audio_uploads")
-    .select("id,display_name,file_size,status,asset_id,error_message,created_at")
-    .order("created_at", { ascending: false })
-    .limit(50);
-  if (error) {
-    showToast("Riwayat gagal dimuat dari Supabase.");
-    return;
+  try {
+    const data = await callFunction("roblox-history");
+    history = Array.isArray(data.uploads) ? data.uploads : [];
+    renderHistory();
+    renderRecent();
+  } catch {
+    showToast("Riwayat gagal dimuat.");
   }
-  history = data;
-  renderHistory();
-  renderRecent();
 }
 
-async function refreshSession(session, showErrors = false) {
-  me.authenticated = !!session?.user;
-  me.discordUser = discordUser(session?.user);
+async function callFunction(name, { body = {}, headers = {} } = {}) {
+  const requestHeaders = new Headers(headers);
+  let requestBody;
+  if (body instanceof Blob) {
+    requestBody = body;
+  } else {
+    requestHeaders.set("Content-Type", "application/json");
+    requestBody = JSON.stringify(body);
+  }
+
+  const response = await fetch(`/api/functions/${encodeURIComponent(name)}`, {
+    method: "POST",
+    headers: requestHeaders,
+    body: requestBody,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : "Permintaan ke layanan uploader gagal.");
+  }
+  if (!data || typeof data !== "object") {
+    throw new Error("Layanan uploader mengembalikan respons yang tidak valid.");
+  }
+  return data;
+}
+
+async function refreshSession(showErrors = false) {
+  let data;
+  try {
+    const response = await fetch("/api/auth/session", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    data = await response.json().catch(() => null);
+    if (!response.ok || !data || typeof data !== "object") {
+      throw new Error(typeof data?.error === "string" ? data.error : "Status login gagal dimuat.");
+    }
+  } catch (error) {
+    me.authenticated = false;
+    me.discordUser = null;
+    me.authorized = false;
+    me.robloxConfigured = false;
+    me.apiKeyConfigured = false;
+    me.creatorLabel = "";
+    updateIdentity();
+    history = [];
+    renderHistory();
+    renderRecent();
+    if (showErrors) showToast(error.message);
+    return;
+  }
+
+  me.authenticated = !!data.user;
+  me.discordUser = discordUser(data.user);
   me.authorized = false;
+  if (!me.authenticated) {
+    me.robloxConfigured = false;
+    me.apiKeyConfigured = false;
+    me.creatorLabel = "";
+    history = [];
+    renderHistory();
+    renderRecent();
+    updateIdentity();
+    return;
+  }
+
   updateIdentity();
   try {
     await loadStatus();
     await loadHistory();
   } catch (error) {
+    me.authorized = false;
+    history = [];
+    renderHistory();
+    renderRecent();
     updateIdentity();
     if (showErrors) showToast(error.message);
   }
 }
 
 async function loadSession() {
-  if (!supabase) {
-    updateIdentity();
-    showToast("Atur VITE_SUPABASE_URL dan VITE_SUPABASE_PUBLISHABLE_KEY di Cloudflare Pages.");
-    return;
+  const url = new URL(window.location.href);
+  const authError = url.searchParams.get("discord_error");
+  if (authError) {
+    url.searchParams.delete("discord_error");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
-  const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    updateIdentity();
-    showToast("Status login Supabase gagal dimuat.");
-    return;
+
+  await refreshSession(true);
+  if (authError) {
+    showToast(authError === "denied"
+      ? "Login Discord dibatalkan."
+      : "Login Discord gagal. Periksa konfigurasi Cloudflare dan coba lagi.");
   }
-  await refreshSession(data.session, true);
-  supabase.auth.onAuthStateChange((_event, session) => {
-    setTimeout(() => { void refreshSession(session, true); }, 0);
-  });
 }
 
 async function login() {
-  if (!supabase) {
-    showToast("Konfigurasi Supabase belum diatur di Cloudflare Pages.");
-    return;
-  }
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "discord",
-    options: { redirectTo: window.location.origin },
-  });
-  if (error) showToast(`Login Discord gagal: ${error.message}`);
+  window.location.assign("/api/auth/discord");
 }
 
 async function logout() {
-  if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    showToast("Tidak bisa keluar dari Discord. Coba lagi.");
+  try {
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) throw new Error("Tidak bisa keluar dari Discord. Coba lagi.");
+  } catch (error) {
+    showToast(error.message || "Tidak bisa keluar dari Discord. Coba lagi.");
     return;
   }
+
   me = {
     authenticated: false,
     authorized: false,
@@ -228,18 +276,12 @@ async function logout() {
     apiKeyConfigured: me.apiKeyConfigured,
     creatorLabel: me.creatorLabel,
   };
-  await refreshSession(null);
+  history = [];
+  renderHistory();
+  renderRecent();
+  updateIdentity();
   navigate("home");
   showToast("Kamu sudah keluar.");
-}
-
-async function invocationError(error) {
-  const response = error?.context;
-  if (response instanceof Response) {
-    const body = await response.clone().json().catch(() => null);
-    if (typeof body?.error === "string") return body.error;
-  }
-  return error?.message || "Permintaan ke Supabase gagal.";
 }
 
 function formatSize(bytes) {
@@ -318,10 +360,7 @@ function openReview() {
 async function pollOperation(uploadId) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2500));
-    const { data, error } = await supabase.functions.invoke("roblox-operation", {
-      body: { uploadId },
-    });
-    if (error) throw new Error(await invocationError(error));
+    const data = await callFunction("roblox-operation", { body: { uploadId } });
     if (data.status === "completed") {
       showUploadStatus("success", `Upload selesai. Asset ID: ${data.assetId}`);
       await loadHistory();
@@ -335,23 +374,22 @@ async function pollOperation(uploadId) {
 
 async function submitUpload() {
   $("#confirmDialog").close();
-  if (!selectedFile || !supabase) return;
+  if (!selectedFile) return;
   const file = selectedFile;
   const name = $("#audioName").value.trim();
   $("#reviewUpload").disabled = true;
   $("#uploadProgress").hidden = false;
   showUploadStatus("pending", "Mengirim audio ke Roblox Open Cloud…");
   try {
-    const { data, error } = await supabase.functions.invoke("roblox-upload", {
+    const data = await callFunction("roblox-upload", {
       body: file,
       headers: {
         "x-audio-name": encodeURIComponent(name),
         "x-audio-filename": encodeURIComponent(file.name),
       },
     });
-    if (error) throw new Error(await invocationError(error));
     if (data.status !== "processing" || typeof data.uploadId !== "string") {
-      throw new Error("Supabase tidak mengembalikan status upload yang valid.");
+      throw new Error("Layanan uploader tidak mengembalikan status upload yang valid.");
     }
     await loadHistory();
     showUploadStatus("pending", "Roblox sedang memproses audio…");

@@ -30,8 +30,10 @@ Deno.serve(async (request: Request) => {
   if (originError) return originError;
 
   let uploadId: string | null = null;
+  let discordUserId: string | null = null;
   try {
     const { user } = await authenticate(request);
+    discordUserId = user.id;
     await requireAuthorized(user.id);
     const config = getRobloxConfig();
     const displayName = decodeHeader(request.headers.get("x-audio-name"), "Nama asset", 50);
@@ -48,7 +50,7 @@ Deno.serve(async (request: Request) => {
     }
 
     const { data: quotaAvailable, error: quotaError } = await adminClient
-      .rpc("consume_audio_upload_quota", { p_user_id: user.id });
+      .rpc("consume_discord_audio_upload_quota", { p_discord_user_id: user.id });
     if (quotaError) throw new Error("Could not enforce upload quota.");
     if (!quotaAvailable) {
       throw new HttpResponseError(429, `Batas aplikasi ${HOURLY_UPLOAD_LIMIT} upload per jam tercapai.`);
@@ -57,7 +59,7 @@ Deno.serve(async (request: Request) => {
     const { data: row, error: insertError } = await adminClient
       .from("audio_uploads")
       .insert({
-        user_id: user.id,
+        discord_user_id: user.id,
         display_name: displayName,
         file_size: bytes.byteLength,
         status: "processing",
@@ -99,16 +101,17 @@ Deno.serve(async (request: Request) => {
       .from("audio_uploads")
       .update({ operation_path: operationPath })
       .eq("id", uploadId)
-      .eq("user_id", user.id);
+      .eq("discord_user_id", user.id);
     if (updateError) throw new Error("Could not save Roblox operation status.");
 
     return jsonResponse(request, { status: "processing", uploadId }, 202);
   } catch (error) {
-    if (uploadId) {
+    if (uploadId && discordUserId) {
       const { error: updateError } = await adminClient
         .from("audio_uploads")
         .update({ status: "failed", error_message: safeMessage(error) })
-        .eq("id", uploadId);
+        .eq("id", uploadId)
+        .eq("discord_user_id", discordUserId);
       if (updateError) return jsonResponse(request, { error: "Upload gagal dan statusnya tidak bisa disimpan. Cek riwayat nanti." }, 500);
     }
     return errorResponse(request, error);
