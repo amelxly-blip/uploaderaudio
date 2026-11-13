@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "file-type": "npm:file-type@22.3.0",
+    "music-metadata": "npm:music-metadata@12.5.0"
+  }
+}
