@@ -210,6 +210,11 @@
       mask-image: radial-gradient(ellipse, black 44%, transparent 76%);
     }
     .hero-art span { display: block; width: 5px; border: 1px solid #aaacb2; border-radius: 8px; background: linear-gradient(#dedfe2, #777980); opacity: .8; }
+    .hero-plan-card { position: absolute; z-index: 2; top: 0; right: 22px; display: flex; width: 136px; min-height: 100px; flex-direction: column; justify-content: center; padding: 14px; border: 1px solid #55565d; border-top: 0; border-radius: 0 0 14px 14px; background: linear-gradient(180deg, #292a2f, #17181b); }
+    .hero-plan-card[hidden] { display: none; }
+    .hero-plan-label { color: #b7b9bf; font-size: 9px; letter-spacing: .07em; }
+    .hero-plan-value { margin-top: 9px; font-size: 18px; font-weight: 760; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+    .hero-plan-card.vip { border-color: #777980; }
     .primary {
       display: inline-flex;
       min-height: 43px;
@@ -452,6 +457,10 @@
       h1 { font-size: 32px; }
       .hero { min-height: 285px; grid-template-columns: 1fr; }
       .hero-copy { padding: 28px 23px; }
+      .hero-identity { max-width: calc(100% - 124px); }
+      .hero-plan-card { right: 13px; width: 112px; min-height: 86px; padding: 11px; }
+      .hero-plan-label { font-size: 8px; }
+      .hero-plan-value { margin-top: 7px; font-size: 15px; }
       .hero h1 { max-width: 390px; font-size: clamp(37px, 10vw, 49px); }
       .hero-copy p { max-width: 370px; margin: 12px 0 19px; font-size: 12px; }
       .hero-art { position: absolute; right: -15px; bottom: -27px; width: 180px; height: 130px; margin: 0; opacity: .36; transform: rotate(-12deg); }
@@ -551,6 +560,10 @@
               <h1 id="heroTitle">Audio siap.<br>Ruangnya juga.</h1>
               <p id="heroText">Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.</p>
               <button class="primary" id="heroAction" type="button">Masuk dengan Discord <span>↗</span></button>
+            </div>
+            <div class="hero-plan-card" id="heroPlanCard" aria-label="Paket dan kuota" hidden>
+              <div class="hero-plan-label" id="heroPlanLabel">PAKET AKUN</div>
+              <div class="hero-plan-value" id="heroPlanValue" aria-live="polite">MASUK</div>
             </div>
             <div class="hero-art" id="heroArt" aria-hidden="true"></div>
           </div>

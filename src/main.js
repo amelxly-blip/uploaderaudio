@@ -1,4 +1,5 @@
 import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
+import { getMembershipBadge } from "./membership-badge.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -149,6 +150,16 @@ function renderMembership() {
   const statistics = dashboard || publicStats;
   const expiresAt = dashboard?.vipExpiresAt ? Date.parse(dashboard.vipExpiresAt) : NaN;
   const vipActive = Boolean(dashboard?.isVip && Number.isFinite(expiresAt) && expiresAt > Date.now());
+  const badge = getMembershipBadge({
+    signedIn,
+    isVip: vipActive,
+    quotaRemaining: dashboard?.quotaRemaining,
+  });
+  const badgeCard = $("#heroPlanCard");
+  badgeCard.hidden = !signedIn;
+  badgeCard.classList.toggle("vip", vipActive);
+  $("#heroPlanLabel").textContent = badge.label;
+  $("#heroPlanValue").textContent = badge.value;
   const plan = $("#membershipPlan");
   plan.classList.toggle("vip", vipActive);
   $("#membershipTitle").textContent = vipActive ? "Premium" : "Gratis";
