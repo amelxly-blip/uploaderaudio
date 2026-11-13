@@ -32,6 +32,18 @@ export async function onRequestPost({ request, env, params }) {
     return jsonError("Konfigurasi Supabase belum diatur di Cloudflare Pages.", 503);
   }
 
+  let appOrigin;
+  try {
+    const redirectUrl = new URL(env.DISCORD_REDIRECT_URI);
+    const localHost = ["localhost", "127.0.0.1"].includes(redirectUrl.hostname);
+    if (redirectUrl.protocol !== "https:" && !(localHost && redirectUrl.protocol === "http:")) {
+      throw new Error("Discord redirect URI must use HTTPS.");
+    }
+    appOrigin = redirectUrl.origin;
+  } catch {
+    return jsonError("Konfigurasi alamat aplikasi di Cloudflare Pages belum valid.", 503);
+  }
+
   let upstreamUrl;
   try {
     upstreamUrl = new URL(`${supabaseUrl}/functions/v1/${functionName}`);
@@ -45,7 +57,8 @@ export async function onRequestPost({ request, env, params }) {
 
   try {
     const headers = new Headers();
-    for (const name of ["Origin", "Content-Type", "x-audio-name", "x-audio-filename"]) {
+    headers.set("Origin", appOrigin);
+    for (const name of ["Content-Type", "x-audio-name", "x-audio-filename"]) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
     }

@@ -20,7 +20,7 @@ The Vite development server only serves the frontend. The `/api/*` authenticatio
 
 1. Create a Supabase project. Discord sign-in does **not** need to be enabled in Supabase Auth.
 2. Set `AUTH_BRIDGE_SECRET` in **Edge Functions → Secrets**. Use a random secret of at least 32 bytes; set the exact same value as a Cloudflare Pages Function secret. Keep this value stable: it also derives the encryption key for users' saved Roblox API keys, so rotating it means each user must save their Roblox API key again.
-3. Set `APP_ORIGINS` to the Cloudflare Pages origin, for example `https://uploaderaudio.pages.dev`. Add additional trusted origins as a comma-separated list.
+3. Set `APP_ORIGINS` to the origin (scheme, host, and optional port) of `DISCORD_REDIRECT_URI`, for example `https://uploaderaudio.pages.dev`. The Pages proxy validates the incoming same-origin request, then forwards this configured app origin to Supabase so preview URLs do not need separate allowlist entries.
 4. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once to apply migrations and deploy Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
 Any Discord account that successfully signs in can use the uploader. Each account can submit up to 5 valid audio upload attempts in any
 rolling 24-hour period. Supabase stores the quota across logout, restarts, and
