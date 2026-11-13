@@ -49,6 +49,8 @@ The Vite development server only serves the frontend. The `/api/*` authenticatio
 5. In Discord Developer Portal, register the exact `DISCORD_REDIRECT_URI` above as an OAuth2 redirect URL. The callback must match the Pages domain and path exactly.
 6. Keep OAuth secrets out of Vite build variables, `.env`, GitHub, and source control. Preview deployments need their own matching callback URL and Discord OAuth redirect registration if you want to test login there.
 
+After changing Pages variables or secrets, trigger a new production deployment from `main` so Pages Functions receive the updated values.
+
 The GitHub workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Configure the Roblox API key only in Supabase and Discord/session secrets only in Cloudflare.
 
 ## Tests
