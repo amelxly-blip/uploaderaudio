@@ -8,6 +8,7 @@ import {
 
 const ALLOWED_FUNCTIONS = new Set([
   "roblox-configure",
+  "roblox-disconnect",
   "roblox-history",
   "roblox-operation",
   "roblox-status",
@@ -58,7 +59,7 @@ export async function onRequestPost({ request, env, params }) {
   try {
     const headers = new Headers();
     headers.set("Origin", appOrigin);
-    for (const name of ["Content-Type", "x-audio-name", "x-audio-filename"]) {
+    for (const name of ["Content-Type", "x-audio-name", "x-audio-filename", "x-asset-type"]) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
     }

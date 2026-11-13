@@ -1,8 +1,8 @@
 import {
   AudioValidationError,
-  validateAudioFile,
-  MAX_AUDIO_SIZE,
-} from "../_shared/audio-validation.js";
+  validateRobloxAsset,
+  MAX_ASSET_SIZE,
+} from "../_shared/asset-validation.js";
 import {
   adminClient,
   authenticate,
@@ -19,6 +19,7 @@ import {
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 
 const DAILY_UPLOAD_LIMIT = 5;
+const ASSET_TYPES = new Set(["Audio", "Decal", "Model"]);
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -39,10 +40,14 @@ Deno.serve(async (request: Request) => {
     }
     const displayName = decodeHeader(request.headers.get("x-audio-name"), "Nama asset", 50);
     const fileName = decodeHeader(request.headers.get("x-audio-filename"), "Nama file", 255);
-    const bytes = await readBoundedBody(request, MAX_AUDIO_SIZE);
-    let audio: { mime: string; duration: number; extension: string };
+    const assetType = request.headers.get("x-asset-type") ?? "Audio";
+    if (!ASSET_TYPES.has(assetType)) {
+      throw new HttpResponseError(400, "Jenis asset tidak valid.");
+    }
+    const bytes = await readBoundedBody(request, MAX_ASSET_SIZE);
+    let asset: { assetType: string; mime: string };
     try {
-      audio = await validateAudioFile(fileName, bytes);
+      asset = await validateRobloxAsset(assetType, fileName, bytes);
     } catch (error) {
       if (error instanceof AudioValidationError) {
         throw new HttpResponseError(error.status, error.message);
@@ -63,6 +68,7 @@ Deno.serve(async (request: Request) => {
         discord_user_id: user.id,
         display_name: displayName,
         file_size: bytes.byteLength,
+        asset_type: assetType,
         status: "processing",
       })
       .select("id")
@@ -71,14 +77,14 @@ Deno.serve(async (request: Request) => {
     uploadId = row.id;
 
     const requestBody = {
-      assetType: "Audio",
+      assetType,
       displayName,
-      description: "Audio uploaded through Roblox Open Cloud.",
+      description: `${assetType} uploaded through Roblox Open Cloud.`,
       creationContext: { creator: config.creator },
     };
     const form = new FormData();
     form.append("request", JSON.stringify(requestBody));
-    form.append("fileContent", new Blob([bytes], { type: audio.mime }), fileName);
+    form.append("fileContent", new Blob([bytes], { type: asset.mime }), fileName);
 
     let response: Response;
     try {

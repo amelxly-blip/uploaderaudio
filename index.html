@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090a0c">
-  <meta name="description" content="Unggah audio milikmu ke Roblox lewat Open Cloud.">
+  <meta name="description" content="Unggah audio, decal, dan model milikmu ke Roblox lewat Open Cloud.">
   <title>MCHLERN — Audio workspace</title>
   <style>
     :root {
@@ -265,6 +265,7 @@
 
     .upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) 285px; align-items: start; gap: 18px; }
     .upload-panel { padding: 21px; }
+    .upload-busy .dropzone { cursor: wait; opacity: .6; pointer-events: none; }
     .dropzone {
       display: grid;
       min-height: 240px;
@@ -294,6 +295,25 @@
     .file-title { overflow: hidden; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
     .file-subtitle { margin-top: 4px; color: var(--muted); font-size: 10px; }
     .remove-file { width: 31px; height: 31px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+    .asset-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 18px 0; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: #101114; }
+    .asset-tab { min-height: 36px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; }
+    .asset-tab.active { border-color: #55565d; background: #303136; color: var(--text); }
+    .audio-speed { margin: 14px 0 16px; padding: 14px; border: 1px solid var(--line-soft); border-radius: 12px; background: #111215; }
+    .audio-speed[hidden] { display: none; }
+    .speed-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .speed-row label { color: #bcbec4; font-size: 10px; font-weight: 650; }
+    .speed-row select { width: 110px; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: #0e0f11; color: var(--text); font-size: 11px; }
+    .speed-help { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .config-row[hidden] { display: none; }
+    .roblox-profile { display: flex; min-width: 0; align-items: center; gap: 13px; margin-top: 18px; padding: 13px; border: 1px solid var(--line-soft); border-radius: 11px; background: #111215; }
+    .roblox-avatar { display: grid; width: 52px; height: 52px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid #494a50; border-radius: 15px; background: #292a2f; color: var(--silver); font-size: 15px; font-weight: 700; }
+    .roblox-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .roblox-profile[hidden] { display: none; }
+    .roblox-profile-copy { min-width: 0; flex: 1; }
+    .roblox-profile-name { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .roblox-profile-handle { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .danger-button { min-height: 34px; padding: 0 11px; border: 1px solid #654646; border-radius: 9px; background: #241719; color: #e7aaaa; cursor: pointer; font-size: 10px; font-weight: 650; }
+    .danger-button:disabled { cursor: wait; opacity: .6; }
     .field { margin-top: 15px; }
     .field label { display: block; margin-bottom: 7px; color: #bcbec4; font-size: 10px; font-weight: 650; }
     .field input {
@@ -477,7 +497,7 @@
       </nav>
       <div class="rail-bottom">
         <div class="cloud-state"><span class="state-dot" id="railCloudDot"></span><span id="railCloudText">Open Cloud belum diatur</span></div>
-        <div class="rail-footnote">Audio diproses lewat Roblox Open Cloud. API key tidak pernah dikirim kembali ke browser.</div>
+        <div class="rail-footnote">Asset diunggah lewat Roblox Open Cloud. API key tidak pernah dikirim kembali ke browser.</div>
       </div>
     </aside>
 
@@ -510,7 +530,7 @@
           <div class="dashboard-lower">
             <section class="surface surface-pad">
               <div class="surface-title">Aktivitas terbaru</div>
-              <div class="surface-subtitle">Riwayat upload yang tercatat di perangkat ini.</div>
+              <div class="surface-subtitle">Riwayat upload audio, decal, dan model di akun ini.</div>
               <div id="recentActivity"></div>
             </section>
             <section class="surface surface-pad">
@@ -529,40 +549,62 @@
         <section class="page" id="page-upload">
           <div class="page-heading">
             <div class="eyebrow">KIRIM KE ROBLOX</div>
-            <h1>Upload audio</h1>
-            <p class="page-intro">Pilih file yang kamu punya haknya, tinjau detailnya, lalu konfirmasi sebelum dikirim ke creator Roblox yang sudah diatur di server.</p>
+            <h1 id="uploadTitle">Upload audio</h1>
+            <p class="page-intro">Pilih audio, decal, atau model Roblox milikmu, tinjau detailnya, lalu konfirmasi upload.</p>
           </div>
           <div class="upload-grid">
             <section class="surface upload-panel">
-              <div class="surface-title">File audio</div>
-              <div class="surface-subtitle">MP3, OGG, WAV, atau FLAC · maksimal 20 MB · maksimal 7 menit.</div>
+                <div class="surface-title" id="uploadPanelTitle">File audio</div>
+                <div class="surface-subtitle" id="uploadPanelSubtitle">MP3, OGG, WAV, atau FLAC · maksimal 20 MB · maksimal 7 menit.</div>
+                <div class="asset-tabs" role="tablist" aria-label="Jenis asset Roblox">
+                  <button class="asset-tab active" id="assetTabAudio" type="button" role="tab" aria-selected="true" data-asset-type="Audio">♫ Audio</button>
+                  <button class="asset-tab" id="assetTabDecal" type="button" role="tab" aria-selected="false" data-asset-type="Decal">▧ Decal</button>
+                  <button class="asset-tab" id="assetTabModel" type="button" role="tab" aria-selected="false" data-asset-type="Model">⬡ Model</button>
+                </div>
               <label class="dropzone" id="dropzone" for="fileInput">
                 <span class="dropzone-content">
                   <span class="upload-glyph">↥</span>
-                  <span class="drop-title">Taruh file di sini</span>
+                    <span class="drop-title" id="dropTitle">Taruh file di sini</span>
                   <span class="drop-hint">atau pilih file dari perangkat</span>
-                  <span class="drop-formats">MP3 · OGG · WAV · FLAC</span>
+                    <span class="drop-formats" id="dropFormats">MP3 · OGG · WAV · FLAC</span>
                 </span>
               </label>
               <input class="file-input" id="fileInput" type="file" accept=".mp3,.ogg,.wav,.flac,audio/mpeg,audio/ogg,audio/wav,audio/flac">
               <div class="file-card" id="fileCard">
-                <div class="file-icon">♫</div>
+                  <div class="file-icon" id="fileIcon">♫</div>
                 <div class="file-copy"><div class="file-title" id="fileName"></div><div class="file-subtitle" id="fileMeta"></div></div>
                 <button class="remove-file" id="removeFile" type="button" aria-label="Hapus pilihan file">×</button>
               </div>
               <audio id="audioPreview" controls hidden style="width:100%;height:38px;margin:-3px 0 15px"></audio>
-              <div class="field"><label for="audioName">Nama asset</label><input id="audioName" type="text" maxlength="50" placeholder="Contoh: ambience hutan sore"></div>
+                <div class="audio-speed" id="audioSpeedControl">
+                  <div class="speed-row">
+                    <label for="playbackSpeed">Roblox PlaybackSpeed</label>
+                    <select id="playbackSpeed" name="playbackSpeed">
+                      <option value="1">1.00×</option>
+                      <option value="0.75">0.75×</option>
+                      <option value="0.6">0.60×</option>
+                      <option value="0.5">0.50×</option>
+                      <option value="0.43" selected>0.43×</option>
+                      <option value="0.4">0.40×</option>
+                      <option value="0.35">0.35×</option>
+                      <option value="0.3">0.30×</option>
+                      <option value="0.25">0.25×</option>
+                    </select>
+                  </div>
+                  <p class="speed-help" id="speedHelp">Audio dipercepat 2.33× sebelum upload. Atur Sound.PlaybackSpeed ke 0.43 agar terdengar normal.</p>
+                </div>
+              <div class="field"><label id="audioNameLabel" for="audioName">Nama audio</label><input id="audioName" type="text" maxlength="50" placeholder="Contoh: ambience hutan sore"></div>
               <div class="status-message" id="uploadStatus" role="status" aria-live="polite"></div>
               <div class="progress" id="uploadProgress" hidden><span></span></div>
               <button class="primary upload-submit" id="reviewUpload" type="button">Tinjau sebelum upload <span>↗</span></button>
             </section>
             <aside class="surface upload-aside">
               <div class="surface-title">Sebelum mengirim</div>
-              <div class="surface-subtitle">Audio dibuat sebagai asset baru di akun atau grup yang diizinkan API key.</div>
+              <div class="surface-subtitle" id="uploadAsideSubtitle">Asset baru dibuat di akun atau grup yang diizinkan API key.</div>
               <div class="aside-rule"></div>
-              <div class="aside-point"><span class="aside-mark">◈</span><span><b>Kuota Roblox berlaku.</b> Permintaan upload memakai kuota creator tersebut.</span></div>
-              <div class="aside-point"><span class="aside-mark">◈</span><span><b>Audio harus milikmu atau berizin.</b> Roblox dapat meninjau dan menolak asset.</span></div>
-              <div class="aside-point"><span class="aside-mark">◈</span><span><b>File audio tidak bisa diperbarui.</b> Periksa file sebelum mengonfirmasi.</span></div>
+              <div class="aside-point"><span class="aside-mark">◈</span><span><b>Kuota berlaku.</b> Semua jenis asset memakai batas 5 upload per 24 jam per Discord.</span></div>
+              <div class="aside-point"><span class="aside-mark">◈</span><span><b>Konten harus milikmu atau berizin.</b> Roblox dapat meninjau dan menolak asset.</span></div>
+              <div class="aside-point"><span class="aside-mark">◈</span><span><b>Upload membuat asset baru.</b> Periksa file dan nama sebelum mengonfirmasi.</span></div>
               <div class="aside-rule"></div>
               <div class="cloud-state"><span class="state-dot" id="uploadCloudDot"></span><span id="uploadCloudText">Menunggu konfigurasi server</span></div>
             </aside>
@@ -578,7 +620,17 @@
           <section class="surface setup-card">
             <div class="surface-title">Status koneksi akun ini</div>
             <div class="surface-subtitle">API key hanya dikirim saat disimpan dan dienkripsi di server. Kunci yang tersimpan tidak pernah ditampilkan kembali.</div>
-            <div class="config-row"><div><div class="config-caption">Creator tujuan</div><div class="config-value" id="setupCreator">Belum diatur</div></div><span class="config-pill" id="setupCloudBadge">BELUM AKTIF</span></div>
+            <div class="roblox-profile" id="robloxProfile" hidden>
+              <div class="roblox-avatar" id="robloxAvatar" aria-hidden="true">?</div>
+              <div class="roblox-profile-copy">
+                <div class="roblox-profile-name" id="robloxDisplayName"></div>
+                <div class="roblox-profile-handle" id="robloxUsername"></div>
+                <div class="config-caption" id="setupCreator"></div>
+                <span class="config-pill">TERHUBUNG</span>
+              </div>
+              <button class="danger-button" id="disconnectRoblox" type="button">Keluar akun</button>
+            </div>
+            <div class="config-row" id="robloxNotConnected"><div><div class="config-caption">Creator tujuan</div><div class="config-value" id="setupCreatorFallback">Belum diatur</div></div><span class="config-pill" id="setupCloudBadge">BELUM AKTIF</span></div>
             <div class="config-row"><div><div class="config-caption">Open Cloud API key</div><div class="config-value">Disimpan terenkripsi · tidak ditampilkan</div></div><span class="config-pill" id="setupKeyBadge">BELUM AKTIF</span></div>
           </section>
           <section class="surface setup-card">
@@ -614,7 +666,7 @@
             <div class="surface-title">Menyiapkan API key</div>
             <div class="surface-subtitle">Buat key resmi dengan izin sekecil mungkin dan batasi ke creator yang sesuai.</div>
             <div class="guide-list">
-              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat key di Creator Dashboard</b>Pilih API Keys dan beri izin Assets yang dibutuhkan untuk upload audio.</div></div>
+              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat key di Creator Dashboard</b>Pilih API Keys dan beri izin Assets yang dibutuhkan untuk jenis upload yang kamu gunakan.</div></div>
               <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Batasi izin dan creator</b>Gunakan key dengan akses minimum dan batasi hanya ke akun pengguna atau grup tujuan.</div></div>
               <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Simpan di form ini</b>Pilih jenis creator, masukkan ID-nya, lalu tempel API key di kolom konfigurasi di atas. Jangan kirim API key lewat chat.</div></div>
             </div>
@@ -646,12 +698,13 @@
   </nav>
 
   <dialog class="modal" id="confirmDialog">
-    <h2>Periksa sebelum upload</h2>
-    <p class="modal-copy">Ini akan membuat asset audio baru di Roblox dan menggunakan kuota creator. Audio tidak dapat diperbarui setelah dikirim.</p>
+    <h2 id="reviewDialogTitle">Periksa sebelum upload audio</h2>
+    <p class="modal-copy" id="reviewDialogCopy">Ini akan membuat asset audio baru di Roblox dan menggunakan kuota creator.</p>
     <div class="review-row"><div class="review-label">File</div><div class="review-value" id="reviewFile"></div></div>
     <div class="review-row"><div class="review-label">Nama asset</div><div class="review-value" id="reviewName"></div></div>
     <div class="review-row"><div class="review-label">Creator tujuan</div><div class="review-value" id="reviewCreator"></div></div>
-    <label class="agreement"><input type="checkbox" id="rightsConfirm"><span>Saya berhak mengunggah audio ini dan memahami Roblox tetap dapat meninjau atau menolaknya.</span></label>
+    <div class="review-row" id="reviewPlaybackSpeedRow"><div class="review-label">PlaybackSpeed</div><div class="review-value" id="reviewPlaybackSpeed"></div></div>
+    <label class="agreement"><input type="checkbox" id="rightsConfirm"><span id="rightsConfirmText">Saya berhak mengunggah audio ini dan memahami Roblox tetap dapat meninjau atau menolaknya.</span></label>
     <div class="modal-actions"><button class="secondary" id="cancelReview" type="button">Kembali</button><button class="primary" id="confirmUpload" type="button" disabled>Konfirmasi upload</button></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

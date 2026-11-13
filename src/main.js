@@ -1,6 +1,43 @@
+import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const tabs = ["home", "upload", "setup", "history"];
+const assetTypes = {
+  Audio: {
+    title: "Upload audio",
+    panel: "File audio",
+    subtitle: "MP3, OGG, WAV, atau FLAC · maksimal 20 MB · maksimal 7 menit.",
+    formats: "MP3 · OGG · WAV · FLAC",
+    accept: ".mp3,.ogg,.wav,.flac,audio/mpeg,audio/ogg,audio/wav,audio/flac",
+    icon: "♫",
+    name: "Nama audio",
+    placeholder: "Contoh: ambience hutan sore",
+    rights: "Saya berhak mengunggah audio ini dan memahami Roblox tetap dapat meninjau atau menolaknya.",
+  },
+  Decal: {
+    title: "Upload decal",
+    panel: "File gambar",
+    subtitle: "PNG, JPG, JPEG, BMP, atau TGA · maksimal 20 MB · maksimal 7999 × 7999 piksel.",
+    formats: "PNG · JPG · BMP · TGA",
+    accept: ".png,.jpg,.jpeg,.bmp,.tga,image/png,image/jpeg,image/bmp,image/tga",
+    icon: "▧",
+    name: "Nama decal",
+    placeholder: "Contoh: Logo komunitas",
+    rights: "Saya memiliki atau berhak mengunggah gambar ini dan memahami Roblox dapat meninjau atau menolaknya.",
+  },
+  Model: {
+    title: "Upload model",
+    panel: "File model Roblox",
+    subtitle: "File .rbxm atau .rbxmx dari Roblox Studio · maksimal 20 MB.",
+    formats: "RBXM · RBXMX",
+    accept: ".rbxm,.rbxmx",
+    icon: "⬡",
+    name: "Nama model",
+    placeholder: "Contoh: Model Rumah",
+    rights: "Saya berhak mengunggah model ini dan memahami Roblox dapat meninjau atau menolaknya.",
+  },
+};
 
 let me = {
   authenticated: false,
@@ -9,8 +46,11 @@ let me = {
   creatorType: "user",
   creatorId: "",
   creatorLabel: "",
+  robloxProfile: null,
 };
 let selectedFile = null;
+let selectedAssetType = "Audio";
+let uploadInProgress = false;
 let previewUrl = null;
 let toastTimer;
 let history = [];
@@ -69,6 +109,69 @@ function setAvatar(element, user) {
   element.textContent = user ? initials(user.displayName || user.username) : "?";
 }
 
+function setRobloxAvatar(element, profile) {
+  element.replaceChildren();
+  if (profile?.avatarUrl) {
+    try {
+      const avatar = new URL(profile.avatarUrl);
+      if (avatar.protocol === "https:" && avatar.hostname.endsWith(".rbxcdn.com")) {
+        const image = document.createElement("img");
+        image.src = avatar.href;
+        image.alt = "";
+        image.referrerPolicy = "no-referrer";
+        image.onerror = () => { element.textContent = initials(profile.displayName || profile.username); };
+        element.append(image);
+        return;
+      }
+    } catch {
+      // Fall back to the profile initial if Roblox did not return a valid avatar URL.
+    }
+  }
+  element.textContent = profile ? initials(profile.displayName || profile.username) : "?";
+}
+
+function creatorDisplayName() {
+  if (!me.robloxProfile) return me.creatorLabel;
+  return me.creatorType === "group"
+    ? `${me.robloxProfile.displayName} · Group ${me.creatorId}`
+    : `${me.robloxProfile.displayName} (@${me.robloxProfile.username})`;
+}
+
+function updatePlaybackSpeedHelp() {
+  const speed = Number($("#playbackSpeed").value);
+  $("#speedHelp").textContent =
+    `Audio dipercepat ${getCompensationSpeed(speed).toFixed(2)}× sebelum upload. Atur Sound.PlaybackSpeed ke ${speed.toFixed(2)} agar terdengar normal.`;
+}
+
+function setAssetType(assetType) {
+  if (uploadInProgress || !Object.prototype.hasOwnProperty.call(assetTypes, assetType)) return;
+  selectedAssetType = assetType;
+  resetFile();
+  $("#audioName").value = "";
+  const details = assetTypes[assetType];
+  $$("[data-asset-type]").forEach((button) => {
+    const active = button.dataset.assetType === assetType;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  $("#uploadTitle").textContent = details.title;
+  $("#uploadPanelTitle").textContent = details.panel;
+  $("#uploadPanelSubtitle").textContent = details.subtitle;
+  $("#dropFormats").textContent = details.formats;
+  $("#fileInput").accept = details.accept;
+  $("#fileIcon").textContent = details.icon;
+  $("#audioSpeedControl").hidden = assetType !== "Audio";
+  $("#audioPreview").hidden = true;
+  $("#audioNameLabel").textContent = details.name;
+  $("#audioName").placeholder = details.placeholder;
+  $("#reviewDialogTitle").textContent = `Periksa sebelum upload ${assetType.toLowerCase()}`;
+  $("#reviewDialogCopy").textContent =
+    `Ini akan membuat asset ${assetType.toLowerCase()} baru di Roblox dan menggunakan kuota creator.`;
+  $("#rightsConfirmText").textContent = details.rights;
+  $("#uploadAsideSubtitle").textContent =
+    `${assetType} baru dibuat di akun atau grup yang diizinkan API key. Kuota aplikasi 5 upload per 24 jam dipakai bersama.`;
+}
+
 function navigate(tab) {
   if (!tabs.includes(tab)) return;
   if (tab !== "home" && !me.authenticated) {
@@ -115,16 +218,28 @@ function updateIdentity() {
   $("#railCloudDot").classList.toggle("ready", !!me.robloxConfigured);
   $("#railCloudText").textContent = me.robloxConfigured ? "Open Cloud terhubung" : "Open Cloud belum diatur";
   $("#homeCloudStatus").textContent = me.robloxConfigured ? "Open Cloud siap" : "Belum dikonfigurasi";
-  $("#homeCloudCreator").textContent = me.creatorLabel || "Atur API key pribadi di Setup Roblox";
-  $("#setupCreator").textContent = me.creatorLabel || "Belum diatur";
+  $("#homeCloudCreator").textContent = me.robloxConfigured
+    ? creatorDisplayName()
+    : "Atur API key pribadi di Setup Roblox";
+  $("#robloxProfile").hidden = !me.robloxConfigured;
+  $("#robloxNotConnected").hidden = me.robloxConfigured;
+  $("#setupCreator").textContent = me.creatorType === "group" ? `Grup · ID ${me.creatorId}` : `User ID ${me.creatorId}`;
+  $("#robloxDisplayName").textContent = me.robloxProfile?.displayName || "";
+  $("#robloxUsername").textContent = me.creatorType === "group"
+    ? `Grup · ID ${me.creatorId}`
+    : `@${me.robloxProfile?.username || ""} · User ID ${me.creatorId}`;
+  setRobloxAvatar($("#robloxAvatar"), me.robloxProfile);
   $("#setupCloudBadge").textContent = me.robloxConfigured ? "TERHUBUNG" : "BELUM AKTIF";
   $("#setupKeyBadge").textContent = me.apiKeyConfigured ? "TERSIMPAN AMAN" : "BELUM AKTIF";
   $("#robloxCreatorType").disabled = !signedIn;
   $("#robloxCreatorId").disabled = !signedIn;
   $("#robloxApiKey").disabled = !signedIn;
   $("#saveRobloxConfig").disabled = !signedIn;
+  $("#disconnectRoblox").disabled = !signedIn;
   $("#uploadCloudDot").classList.toggle("ready", !!me.robloxConfigured);
-  $("#uploadCloudText").textContent = me.robloxConfigured ? `Tujuan: ${me.creatorLabel}` : "Atur Creator ID dan API key di Setup Roblox";
+  $("#uploadCloudText").textContent = me.robloxConfigured
+    ? `Tujuan: ${creatorDisplayName()}`
+    : "Atur Creator ID dan API key di Setup Roblox";
   $("#reviewUpload").disabled = !signedIn || !me.robloxConfigured;
 }
 
@@ -134,6 +249,7 @@ async function loadStatus() {
     me.creatorLabel = "";
     me.creatorType = "user";
     me.creatorId = "";
+    me.robloxProfile = null;
     $("#robloxCredentialsForm").reset();
     $("#credentialsStatus").className = "status-message";
     $("#credentialsStatus").textContent = "";
@@ -146,6 +262,13 @@ async function loadStatus() {
   me.creatorType = data.creatorType === "group" ? "group" : "user";
   me.creatorId = typeof data.creatorId === "string" ? data.creatorId : "";
   me.creatorLabel = typeof data.creatorLabel === "string" ? data.creatorLabel : "";
+  me.robloxProfile = data.profile && typeof data.profile === "object"
+    ? {
+        username: typeof data.profile.username === "string" ? data.profile.username : "",
+        displayName: typeof data.profile.displayName === "string" ? data.profile.displayName : "",
+        avatarUrl: typeof data.profile.avatarUrl === "string" ? data.profile.avatarUrl : "",
+      }
+    : null;
   $("#robloxCreatorType").value = me.creatorType;
   $("#robloxCreatorId").value = me.creatorId;
   updateIdentity();
@@ -188,6 +311,13 @@ async function saveRobloxCredentials(event) {
     me.creatorType = data.creatorType === "group" ? "group" : "user";
     me.creatorId = typeof data.creatorId === "string" ? data.creatorId : creatorId;
     me.creatorLabel = typeof data.creatorLabel === "string" ? data.creatorLabel : "";
+    me.robloxProfile = data.profile && typeof data.profile === "object"
+      ? {
+          username: typeof data.profile.username === "string" ? data.profile.username : "",
+          displayName: typeof data.profile.displayName === "string" ? data.profile.displayName : "",
+          avatarUrl: typeof data.profile.avatarUrl === "string" ? data.profile.avatarUrl : "",
+        }
+      : null;
     $("#robloxApiKey").value = "";
     $("#robloxCreatorType").value = me.creatorType;
     $("#robloxCreatorId").value = me.creatorId;
@@ -197,6 +327,33 @@ async function saveRobloxCredentials(event) {
     showCredentialsStatus("error", error.message || "Konfigurasi tidak bisa disimpan. Coba lagi.");
   } finally {
     button.textContent = "Simpan konfigurasi";
+    button.disabled = !me.authenticated;
+  }
+}
+
+async function disconnectRoblox() {
+  if (!me.robloxConfigured || !me.authenticated) return;
+  if (!window.confirm("Putuskan akun Roblox ini dari Discord kamu?")) return;
+  const button = $("#disconnectRoblox");
+  button.disabled = true;
+  button.textContent = "Memutuskan...";
+  try {
+    await callFunction("roblox-disconnect");
+    me.robloxConfigured = false;
+    me.apiKeyConfigured = false;
+    me.creatorType = "user";
+    me.creatorId = "";
+    me.creatorLabel = "";
+    me.robloxProfile = null;
+    $("#robloxCredentialsForm").reset();
+    $("#credentialsStatus").className = "status-message";
+    $("#credentialsStatus").textContent = "";
+    updateIdentity();
+    showToast("Akun Roblox sudah diputuskan.");
+  } catch (error) {
+    showCredentialsStatus("error", error.message || "Akun Roblox tidak bisa diputuskan. Coba lagi.");
+  } finally {
+    button.textContent = "Keluar akun";
     button.disabled = !me.authenticated;
   }
 }
@@ -264,6 +421,7 @@ async function refreshSession(showErrors = false) {
     me.creatorType = "user";
     me.creatorId = "";
     me.creatorLabel = "";
+    me.robloxProfile = null;
     $("#robloxCredentialsForm").reset();
     $("#credentialsStatus").className = "status-message";
     $("#credentialsStatus").textContent = "";
@@ -346,6 +504,7 @@ async function logout() {
     creatorType: "user",
     creatorId: "",
     creatorLabel: "",
+    robloxProfile: null,
   };
   $("#robloxCredentialsForm").reset();
   $("#credentialsStatus").className = "status-message";
@@ -370,6 +529,17 @@ function showUploadStatus(type, text) {
   status.textContent = text;
 }
 
+function setUploadBusy(isBusy) {
+  uploadInProgress = isBusy;
+  document.body.classList.toggle("upload-busy", isBusy);
+  $("#fileInput").disabled = isBusy;
+  $("#removeFile").disabled = isBusy;
+  $("#audioName").disabled = isBusy;
+  $("#playbackSpeed").disabled = isBusy;
+  $$("[data-asset-type]").forEach((button) => { button.disabled = isBusy; });
+  $("#reviewUpload").disabled = isBusy || !me.authenticated || !me.robloxConfigured;
+}
+
 function clearUploadStatus() {
   $("#uploadStatus").className = "status-message";
   $("#uploadStatus").textContent = "";
@@ -388,10 +558,16 @@ function resetFile(preserveStatus = false) {
 }
 
 function handleFile(file) {
-  if (!file) return;
+  if (!file || uploadInProgress) return;
+  resetFile();
   const extension = file.name.split(".").pop().toLowerCase();
-  if (!["mp3", "ogg", "wav", "flac"].includes(extension)) {
-    showUploadStatus("error", "Format ini belum didukung. Pilih MP3, OGG, WAV, atau FLAC.");
+  const validExtensions = {
+    Audio: ["mp3", "ogg", "wav", "flac"],
+    Decal: ["png", "jpg", "jpeg", "bmp", "tga"],
+    Model: ["rbxm", "rbxmx"],
+  }[selectedAssetType];
+  if (!validExtensions.includes(extension)) {
+    showUploadStatus("error", `Format file tidak sesuai. Pilih: ${assetTypes[selectedAssetType].formats}.`);
     return;
   }
   if (file.size > 20 * 1024 * 1024) {
@@ -403,9 +579,11 @@ function handleFile(file) {
   $("#fileMeta").textContent = `${formatSize(file.size)} · ${extension.toUpperCase()}`;
   $("#fileCard").classList.add("visible");
   $("#audioName").value = $("#audioName").value.trim() || file.name.replace(/\.[^.]+$/, "").slice(0, 50);
-  previewUrl = URL.createObjectURL(file);
-  $("#audioPreview").src = previewUrl;
-  $("#audioPreview").hidden = false;
+  if (selectedAssetType === "Audio") {
+    previewUrl = URL.createObjectURL(file);
+    $("#audioPreview").src = previewUrl;
+    $("#audioPreview").hidden = false;
+  }
   clearUploadStatus();
 }
 
@@ -416,7 +594,7 @@ function openReview() {
     return;
   }
   const name = $("#audioName").value.trim();
-  if (!selectedFile) { showUploadStatus("error", "Pilih file audio lebih dulu."); return; }
+  if (!selectedFile) { showUploadStatus("error", "Pilih file lebih dulu."); return; }
   if (!name || name.length > 50) {
     showUploadStatus("error", "Nama asset wajib diisi (maksimal 50 karakter).");
     $("#audioName").focus();
@@ -424,24 +602,29 @@ function openReview() {
   }
   $("#reviewFile").textContent = `${selectedFile.name} · ${formatSize(selectedFile.size)}`;
   $("#reviewName").textContent = name;
-  $("#reviewCreator").textContent = me.creatorLabel || "Creator Roblox yang terhubung";
+  $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
+  $("#reviewPlaybackSpeedRow").hidden = selectedAssetType !== "Audio";
+  if (selectedAssetType === "Audio") {
+    $("#reviewPlaybackSpeed").textContent =
+      `${Number($("#playbackSpeed").value).toFixed(2)}× di Roblox · audio dipercepat ${getCompensationSpeed($("#playbackSpeed").value).toFixed(2)}× saat diproses`;
+  }
   $("#rightsConfirm").checked = false;
   $("#confirmUpload").disabled = true;
   $("#confirmDialog").showModal();
 }
 
-async function pollOperation(uploadId) {
+async function pollOperation(uploadId, assetType) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const data = await callFunction("roblox-operation", { body: { uploadId } });
     if (data.status === "completed") {
-      showUploadStatus("success", `Upload selesai. Asset ID: ${data.assetId}`);
+      showUploadStatus("success", `Upload ${assetType.toLowerCase()} selesai. Asset ID: ${data.assetId}`);
       await loadHistory();
       return;
     }
     if (data.status === "failed") throw new Error(data.error || "Roblox menolak upload.");
   }
-  showUploadStatus("pending", "Roblox masih memproses audio. Cek riwayat sebentar lagi.");
+  showUploadStatus("pending", `Roblox masih memproses ${assetType.toLowerCase()}. Cek riwayat sebentar lagi.`);
   await loadHistory();
 }
 
@@ -450,30 +633,39 @@ async function submitUpload() {
   if (!selectedFile) return;
   const file = selectedFile;
   const name = $("#audioName").value.trim();
-  $("#reviewUpload").disabled = true;
+  setUploadBusy(true);
   $("#uploadProgress").hidden = false;
-  showUploadStatus("pending", "Mengirim audio ke Roblox Open Cloud…");
+  const assetType = selectedAssetType;
+  const playbackSpeed = Number($("#playbackSpeed").value);
+  showUploadStatus("pending", assetType === "Audio" && playbackSpeed !== 1
+    ? "Memproses speed audio di browser…"
+    : `Mengirim ${assetType.toLowerCase()} ke Roblox Open Cloud…`);
   try {
+    const uploadFile = assetType === "Audio"
+      ? await processAudioForPlaybackSpeed(file, playbackSpeed)
+      : file;
     const data = await callFunction("roblox-upload", {
-      body: file,
+      body: uploadFile,
       headers: {
         "x-audio-name": encodeURIComponent(name),
-        "x-audio-filename": encodeURIComponent(file.name),
+        "x-audio-filename": encodeURIComponent(uploadFile.name),
+        "x-asset-type": assetType,
       },
     });
     if (data.status !== "processing" || typeof data.uploadId !== "string") {
       throw new Error("Layanan uploader tidak mengembalikan status upload yang valid.");
     }
     await loadHistory();
-    showUploadStatus("pending", "Roblox sedang memproses audio…");
-    await pollOperation(data.uploadId);
+    showUploadStatus("pending", `Roblox sedang memproses ${assetType.toLowerCase()}…`);
+    await pollOperation(data.uploadId, assetType);
     resetFile(true);
+    $("#audioName").value = "";
   } catch (error) {
     showUploadStatus("error", error.message);
     await loadHistory();
   } finally {
     $("#uploadProgress").hidden = true;
-    $("#reviewUpload").disabled = !me.authenticated || !me.robloxConfigured;
+    setUploadBusy(false);
   }
 }
 
@@ -490,22 +682,25 @@ function renderHistory() {
     const size = Number(item.file_size) || 0;
     const date = item.created_at ? new Date(item.created_at).toLocaleString("id-ID") : "—";
     const idCell = item.asset_id ? `<span class="tag">${escapeHtml(item.asset_id)}</span>` : "—";
-    return `<tr><td class="name-cell">${escapeHtml(item.display_name)}</td><td>${escapeHtml(formatSize(size))}</td><td>${escapeHtml(date)}</td><td>${idCell}</td><td><span class="history-badge ${statusClass}">${label}</span></td></tr>`;
+    const type = ["Audio", "Decal", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
+    return `<tr><td class="name-cell">${escapeHtml(item.display_name)}</td><td>${type}</td><td>${escapeHtml(formatSize(size))}</td><td>${escapeHtml(date)}</td><td>${idCell}</td><td><span class="history-badge ${statusClass}">${label}</span></td></tr>`;
   }).join("");
-  target.innerHTML = `<div class="table-wrap"><table class="history-table"><thead><tr><th>Nama asset</th><th>Ukuran</th><th>Waktu</th><th>Asset ID</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  target.innerHTML = `<div class="table-wrap"><table class="history-table"><thead><tr><th>Nama asset</th><th>Jenis</th><th>Ukuran</th><th>Waktu</th><th>Asset ID</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderRecent() {
   const target = $("#recentActivity");
   const latest = history.slice(0, 2);
   if (!latest.length) {
-    target.innerHTML = '<div class="recent-empty"><span>♫</span>Belum ada audio di workspace</div>';
+    target.innerHTML = '<div class="recent-empty"><span>♫</span>Belum ada asset di workspace</div>';
     return;
   }
   target.innerHTML = latest.map((item) => {
     const status = item.status === "completed" ? "Selesai" : item.status === "processing" ? "Diproses" : "Gagal";
     const date = item.created_at ? new Date(item.created_at).toLocaleString("id-ID") : "";
-    return `<div class="recent-row"><div class="track-icon">♫</div><div class="track-copy"><div class="track-name">${escapeHtml(item.display_name)}</div><div class="track-meta">${escapeHtml(date)}${item.asset_id ? ` · ${escapeHtml(item.asset_id)}` : ""}</div></div><span class="tag">${status}</span></div>`;
+    const type = ["Audio", "Decal", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
+    const icon = type === "Audio" ? "♫" : type === "Decal" ? "▧" : "⬡";
+    return `<div class="recent-row"><div class="track-icon">${icon}</div><div class="track-copy"><div class="track-name">${escapeHtml(item.display_name)}</div><div class="track-meta">${type} · ${escapeHtml(date)}${item.asset_id ? ` · ${escapeHtml(item.asset_id)}` : ""}</div></div><span class="tag">${status}</span></div>`;
   }).join("");
 }
 
@@ -518,6 +713,7 @@ function buildWaveform() {
 
 $$("[data-tab]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.tab)));
 $$("[data-go]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.go)));
+$$("[data-asset-type]").forEach((button) => button.addEventListener("click", () => setAssetType(button.dataset.assetType)));
 $("#authButton").addEventListener("click", () => me.authenticated ? logout() : login());
 $("#fileInput").addEventListener("change", (event) => handleFile(event.target.files[0]));
 $("#removeFile").addEventListener("click", resetFile);
@@ -530,10 +726,14 @@ $("#dropzone").addEventListener("drop", (event) => {
 });
 $("#reviewUpload").addEventListener("click", openReview);
 $("#robloxCredentialsForm").addEventListener("submit", saveRobloxCredentials);
+$("#disconnectRoblox").addEventListener("click", disconnectRoblox);
+$("#playbackSpeed").addEventListener("change", updatePlaybackSpeedHelp);
 $("#cancelReview").addEventListener("click", () => $("#confirmDialog").close());
 $("#rightsConfirm").addEventListener("change", (event) => { $("#confirmUpload").disabled = !event.target.checked; });
 $("#confirmUpload").addEventListener("click", submitUpload);
 buildWaveform();
+updatePlaybackSpeedHelp();
+setAssetType("Audio");
 updateIdentity();
 void loadSession();
 setTimeout(() => {

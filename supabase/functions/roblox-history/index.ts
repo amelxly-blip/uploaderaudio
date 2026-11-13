@@ -19,7 +19,7 @@ Deno.serve(async (request: Request) => {
     const { user } = await authenticate(request);
     const { data, error } = await adminClient
       .from("audio_uploads")
-      .select("id,display_name,file_size,status,asset_id,error_message,created_at")
+      .select("id,display_name,file_size,asset_type,status,asset_id,error_message,created_at")
       .eq("discord_user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50);
