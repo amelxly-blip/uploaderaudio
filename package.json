@@ -1,0 +1,20 @@
+{
+  "name": "mchlern-audio-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "file-type": "^21.0.0",
+    "music-metadata": "^11.9.0",
+    "multer": "^2.0.2"
+  }
+}
