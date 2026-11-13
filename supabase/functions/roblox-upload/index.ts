@@ -19,7 +19,7 @@ import {
   safeMessage,
 } from "../_shared/http.ts";
 
-const HOURLY_UPLOAD_LIMIT = 10;
+const DAILY_UPLOAD_LIMIT = 5;
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -53,7 +53,7 @@ Deno.serve(async (request: Request) => {
       .rpc("consume_discord_audio_upload_quota", { p_discord_user_id: user.id });
     if (quotaError) throw new Error("Could not enforce upload quota.");
     if (!quotaAvailable) {
-      throw new HttpResponseError(429, `Batas aplikasi ${HOURLY_UPLOAD_LIMIT} upload per jam tercapai.`);
+      throw new HttpResponseError(429, `Batas aplikasi ${DAILY_UPLOAD_LIMIT} upload dalam 24 jam tercapai.`);
     }
 
     const { data: row, error: insertError } = await adminClient

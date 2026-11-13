@@ -33,6 +33,10 @@ The Vite development server only serves the frontend. The `/api/*` authenticatio
 
    Only add trusted Discord accounts. Login alone does not grant upload access.
 
+Each authorized Discord account can submit up to 5 valid audio upload attempts in any
+rolling 24-hour period. Supabase stores the quota across logout, restarts, and
+deployments; failed Roblox processing attempts still count.
+
 ## Cloudflare Pages and Discord
 
 1. Import this GitHub repository into Cloudflare Pages and select the `main` branch.

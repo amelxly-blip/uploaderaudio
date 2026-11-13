@@ -192,6 +192,12 @@
     }
     .hero-copy { position: relative; z-index: 1; max-width: 600px; padding: 40px 42px; }
     .hero-copy .eyebrow { color: #b4b6bb; }
+    .hero-identity { display: flex; align-items: center; gap: 11px; margin: 0 0 17px; }
+    .hero-identity[hidden] { display: none; }
+    .hero-avatar { width: 42px; height: 42px; border-color: #5a5b62; }
+    .hero-identity-copy { min-width: 0; }
+    .hero-identity-name { overflow: hidden; color: var(--text); font-size: 13px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+    .hero-identity-handle { margin-top: 3px; color: #a6a8ae; font-size: 11px; }
     .hero h1 { max-width: 520px; font-size: clamp(36px, 5.2vw, 58px); letter-spacing: -.065em; }
     .hero-copy p { max-width: 445px; margin: 16px 0 25px; color: #a6a8ae; font-size: 13px; line-height: 1.65; }
     .hero-art {
@@ -471,6 +477,13 @@
           <div class="hero">
             <div class="hero-copy">
               <div class="eyebrow" id="heroEyebrow">RUANG AUDIO KAMU</div>
+              <div class="hero-identity" id="heroIdentity" hidden>
+                <div class="avatar hero-avatar" id="heroAvatar" aria-hidden="true">?</div>
+                <div class="hero-identity-copy">
+                  <div class="hero-identity-name" id="heroDisplayName"></div>
+                  <div class="hero-identity-handle" id="heroUsername"></div>
+                </div>
+              </div>
               <h1 id="heroTitle">Audio siap.<br>Ruangnya juga.</h1>
               <p id="heroText">Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.</p>
               <button class="primary" id="heroAction" type="button">Masuk dengan Discord <span>↗</span></button>

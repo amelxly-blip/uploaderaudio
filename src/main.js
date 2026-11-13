@@ -93,6 +93,12 @@ function updateIdentity() {
   $("#topbarAvatar").hidden = !user;
   $("#authButton").textContent = user ? "Keluar" : "Masuk dengan Discord";
   $("#heroEyebrow").textContent = authorized ? "WORKSPACE AKTIF" : "RUANG AUDIO KAMU";
+  $("#heroIdentity").hidden = !user;
+  if (user) {
+    setAvatar($("#heroAvatar"), user);
+    $("#heroDisplayName").textContent = user.displayName || user.username;
+    $("#heroUsername").textContent = `@${user.username}`;
+  }
   $("#heroTitle").innerHTML = authorized
     ? `Halo, ${escapeHtml(user.displayName || user.username)}.<br>Mulai dari audio.`
     : user ? "Akun Discord belum<br>diizinkan." : "Audio siap.<br>Ruangnya juga.";
