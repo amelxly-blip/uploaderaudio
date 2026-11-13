@@ -14,7 +14,6 @@ import {
   jsonResponse,
   preflightResponse,
   readBoundedBody,
-  requireAuthorized,
   robloxError,
   safeMessage,
 } from "../_shared/http.ts";
@@ -34,7 +33,6 @@ Deno.serve(async (request: Request) => {
   try {
     const { user } = await authenticate(request);
     discordUserId = user.id;
-    await requireAuthorized(user.id);
     const config = getRobloxConfig();
     const displayName = decodeHeader(request.headers.get("x-audio-name"), "Nama asset", 50);
     const fileName = decodeHeader(request.headers.get("x-audio-filename"), "Nama file", 255);

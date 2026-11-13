@@ -101,22 +101,6 @@ export async function authenticate(request: Request): Promise<{ user: Authentica
   return { user: { id: claims.sub } };
 }
 
-export async function isAuthorized(discordUserId: string): Promise<boolean> {
-  const { data, error } = await adminClient
-    .from("authorized_discord_uploaders")
-    .select("discord_user_id")
-    .eq("discord_user_id", discordUserId)
-    .maybeSingle();
-  if (error) throw new Error("Could not verify uploader access.");
-  return Boolean(data);
-}
-
-export async function requireAuthorized(discordUserId: string): Promise<void> {
-  if (!await isAuthorized(discordUserId)) {
-    throw new HttpResponseError(403, "Akun Discord ini belum diizinkan oleh pemilik uploader.");
-  }
-}
-
 export class HttpResponseError extends Error {
   status: number;
 

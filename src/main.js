@@ -4,7 +4,6 @@ const tabs = ["home", "upload", "setup", "history"];
 
 let me = {
   authenticated: false,
-  authorized: false,
   robloxConfigured: false,
   apiKeyConfigured: false,
   creatorLabel: "",
@@ -70,10 +69,8 @@ function setAvatar(element, user) {
 
 function navigate(tab) {
   if (!tabs.includes(tab)) return;
-  if (tab !== "home" && !me.authorized) {
-    showToast(me.authenticated
-      ? "Akun ini belum diizinkan oleh pemilik uploader."
-      : "Masuk dengan Discord dulu untuk membuka bagian ini.");
+  if (tab !== "home" && !me.authenticated) {
+    showToast("Masuk dengan Discord dulu untuk membuka bagian ini.");
     return;
   }
   $$(".page").forEach((page) => page.classList.toggle("active", page.id === `page-${tab}`));
@@ -85,37 +82,34 @@ function navigate(tab) {
 
 function updateIdentity() {
   const user = me.discordUser;
-  const authorized = !!user && me.authorized === true;
+  const signedIn = !!user && me.authenticated;
   $("#railName").textContent = user ? user.displayName || user.username : "Belum terhubung";
-  $("#railHint").textContent = authorized ? `Discord · ${user.username}` : user ? "Belum diizinkan" : "Masuk untuk mulai";
+  $("#railHint").textContent = signedIn ? `Discord · ${user.username}` : "Masuk untuk mulai";
   setAvatar($("#railAvatar"), user);
   setAvatar($("#topbarAvatar"), user);
   $("#topbarAvatar").hidden = !user;
   $("#authButton").textContent = user ? "Keluar" : "Masuk dengan Discord";
-  $("#heroEyebrow").textContent = authorized ? "WORKSPACE AKTIF" : "RUANG AUDIO KAMU";
+  $("#heroEyebrow").textContent = signedIn ? "WORKSPACE AKTIF" : "RUANG AUDIO KAMU";
   $("#heroIdentity").hidden = !user;
   if (user) {
     setAvatar($("#heroAvatar"), user);
     $("#heroDisplayName").textContent = user.displayName || user.username;
     $("#heroUsername").textContent = `@${user.username}`;
   }
-  $("#heroTitle").innerHTML = authorized
+  $("#heroTitle").innerHTML = signedIn
     ? `Halo, ${escapeHtml(user.displayName || user.username)}.<br>Mulai dari audio.`
-    : user ? "Akun Discord belum<br>diizinkan." : "Audio siap.<br>Ruangnya juga.";
-  $("#heroText").textContent = authorized
-    ? "Pilih file, periksa creator tujuan, lalu kirim lewat Roblox Open Cloud."
-    : user
-      ? "Login berhasil. Minta pemilik uploader menambahkan akunmu ke allowlist."
-      : "Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.";
-  $("#heroAction").innerHTML = authorized
+    : "Audio siap.<br>Ruangnya juga.";
+  $("#heroText").textContent = signedIn
+    ? "Pilih file dan kirim lewat Roblox Open Cloud. Setiap akun Discord mendapat 5 upload per 24 jam."
+    : "Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.";
+  $("#heroAction").innerHTML = signedIn
     ? "Mulai upload <span>↗</span>"
-    : user ? "Keluar dari Discord" : "Masuk dengan Discord <span>↗</span>";
-  $("#heroAction").onclick = () => authorized ? navigate("upload") : user ? logout() : login();
-  $("#signedOutNotice").hidden = authorized;
-  $("#signedOutNotice").textContent = user && !authorized
-    ? "Akun Discord ini belum mendapat akses. Minta pemilik uploader menambahkan akunmu ke allowlist."
-    : "Masuk memakai Discord untuk membuka upload, setup, dan riwayat. Login memakai OAuth resmi; kami tidak meminta password Discord atau Roblox.";
-  $$("[data-lock]").forEach((lock) => { lock.hidden = authorized; });
+    : "Masuk dengan Discord <span>↗</span>";
+  $("#heroAction").onclick = () => signedIn ? navigate("upload") : login();
+  $("#signedOutNotice").hidden = signedIn;
+  $("#signedOutNotice").textContent =
+    "Masuk dengan Discord untuk membuka upload, setup, dan riwayat. Setiap akun mendapat 5 upload per 24 jam.";
+  $$("[data-lock]").forEach((lock) => { lock.hidden = signedIn; });
   $("#railCloudDot").classList.toggle("ready", !!me.robloxConfigured);
   $("#railCloudText").textContent = me.robloxConfigured ? "Open Cloud terhubung" : "Open Cloud belum diatur";
   $("#homeCloudStatus").textContent = me.robloxConfigured ? "Open Cloud siap" : "Belum dikonfigurasi";
@@ -125,19 +119,17 @@ function updateIdentity() {
   $("#setupKeyBadge").textContent = me.apiKeyConfigured ? "TERSIMPAN AMAN" : "BELUM AKTIF";
   $("#uploadCloudDot").classList.toggle("ready", !!me.robloxConfigured);
   $("#uploadCloudText").textContent = me.robloxConfigured ? `Tujuan: ${me.creatorLabel}` : "Open Cloud belum dikonfigurasi di Edge Function";
-  $("#reviewUpload").disabled = !authorized || !me.robloxConfigured;
+  $("#reviewUpload").disabled = !signedIn || !me.robloxConfigured;
 }
 
 async function loadStatus() {
   if (!me.authenticated) {
-    me.authorized = false;
     me.robloxConfigured = false;
     me.creatorLabel = "";
     updateIdentity();
     return;
   }
   const data = await callFunction("roblox-status");
-  me.authorized = data.authorized === true;
   me.robloxConfigured = data.robloxConfigured === true;
   me.apiKeyConfigured = data.apiKeyConfigured === true;
   me.creatorLabel = typeof data.creatorLabel === "string" ? data.creatorLabel : "";
@@ -145,7 +137,7 @@ async function loadStatus() {
 }
 
 async function loadHistory() {
-  if (!me.authorized) {
+  if (!me.authenticated) {
     history = [];
     renderHistory();
     renderRecent();
@@ -202,7 +194,6 @@ async function refreshSession(showErrors = false) {
   } catch (error) {
     me.authenticated = false;
     me.discordUser = null;
-    me.authorized = false;
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
     me.creatorLabel = "";
@@ -216,7 +207,6 @@ async function refreshSession(showErrors = false) {
 
   me.authenticated = !!data.user;
   me.discordUser = discordUser(data.user);
-  me.authorized = false;
   if (!me.authenticated) {
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
@@ -233,7 +223,6 @@ async function refreshSession(showErrors = false) {
     await loadStatus();
     await loadHistory();
   } catch (error) {
-    me.authorized = false;
     history = [];
     renderHistory();
     renderRecent();
@@ -277,7 +266,6 @@ async function logout() {
 
   me = {
     authenticated: false,
-    authorized: false,
     robloxConfigured: me.robloxConfigured,
     apiKeyConfigured: me.apiKeyConfigured,
     creatorLabel: me.creatorLabel,
@@ -343,7 +331,6 @@ function handleFile(file) {
 
 function openReview() {
   if (!me.authenticated) { showToast("Masuk dengan Discord dulu."); return; }
-  if (!me.authorized) { showToast("Akun Discord ini belum diizinkan."); return; }
   if (!me.robloxConfigured) {
     showUploadStatus("error", "Open Cloud belum diatur. Periksa secret Edge Function di Supabase.");
     return;
@@ -406,7 +393,7 @@ async function submitUpload() {
     await loadHistory();
   } finally {
     $("#uploadProgress").hidden = true;
-    $("#reviewUpload").disabled = !me.authorized || !me.robloxConfigured;
+    $("#reviewUpload").disabled = !me.authenticated || !me.robloxConfigured;
   }
 }
 

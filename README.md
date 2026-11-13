@@ -1,6 +1,6 @@
 # MCHLERN Audio Workspace
 
-Responsive Indonesian Roblox audio uploader. Cloudflare Pages serves the Vite frontend and handles Discord OAuth in Pages Functions. Supabase Postgres stores the Discord allowlist and upload history; Supabase Edge Functions upload and poll Roblox Open Cloud.
+Responsive Indonesian Roblox audio uploader. Cloudflare Pages serves the Vite frontend and handles Discord OAuth in Pages Functions. Supabase Postgres stores per-Discord upload quotas and history; Supabase Edge Functions upload and poll Roblox Open Cloud.
 
 The Discord session and Roblox API key stay server-side. The app does not use Roblox cookies, expose API keys, or bypass Roblox moderation.
 
@@ -23,19 +23,10 @@ The Vite development server only serves the frontend. The `/api/*` authenticatio
 3. Set `APP_ORIGINS` to the Cloudflare Pages origin, for example `https://uploaderaudio.pages.dev`. Add additional trusted origins as a comma-separated list.
 4. Set `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_TYPE` (`user` or `group`), and `ROBLOX_CREATOR_ID` in Edge Function secrets.
 5. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once to apply migrations and deploy Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
-6. To allow an uploader, enable Developer Mode in Discord, copy their Discord user ID, then run this in Supabase SQL Editor:
-
-   ```sql
-   insert into public.authorized_discord_uploaders (discord_user_id)
-   values ('DISCORD_USER_ID')
-   on conflict (discord_user_id) do nothing;
-   ```
-
-   Only add trusted Discord accounts. Login alone does not grant upload access.
-
-Each authorized Discord account can submit up to 5 valid audio upload attempts in any
+Any Discord account that successfully signs in can use the uploader. Each account can submit up to 5 valid audio upload attempts in any
 rolling 24-hour period. Supabase stores the quota across logout, restarts, and
-deployments; failed Roblox processing attempts still count.
+deployments; failed Roblox processing attempts still count. Uploads use the site's
+configured Roblox creator and API key, so the creator's Roblox quota also applies.
 
 ## Cloudflare Pages and Discord
 

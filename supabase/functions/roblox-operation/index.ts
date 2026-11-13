@@ -7,7 +7,6 @@ import {
   HttpResponseError,
   jsonResponse,
   preflightResponse,
-  requireAuthorized,
   robloxError,
   safeMessage,
 } from "../_shared/http.ts";
@@ -22,7 +21,6 @@ Deno.serve(async (request: Request) => {
 
   try {
     const { user } = await authenticate(request);
-    await requireAuthorized(user.id);
     const body = await request.json().catch(() => null);
     const uploadId = body?.uploadId;
     if (typeof uploadId !== "string" || !/^[0-9a-f-]{36}$/i.test(uploadId)) {

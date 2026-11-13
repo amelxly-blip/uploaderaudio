@@ -5,7 +5,6 @@ import {
   errorResponse,
   jsonResponse,
   preflightResponse,
-  requireAuthorized,
 } from "../_shared/http.ts";
 
 Deno.serve(async (request: Request) => {
@@ -18,7 +17,6 @@ Deno.serve(async (request: Request) => {
 
   try {
     const { user } = await authenticate(request);
-    await requireAuthorized(user.id);
     const { data, error } = await adminClient
       .from("audio_uploads")
       .select("id,display_name,file_size,status,asset_id,error_message,created_at")
