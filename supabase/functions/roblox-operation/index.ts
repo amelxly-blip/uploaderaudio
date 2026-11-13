@@ -3,13 +3,12 @@ import {
   authenticate,
   checkOrigin,
   errorResponse,
-  getRobloxConfig,
   HttpResponseError,
   jsonResponse,
   preflightResponse,
   robloxError,
-  safeMessage,
 } from "../_shared/http.ts";
+import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -46,11 +45,14 @@ Deno.serve(async (request: Request) => {
       throw new Error("Stored Roblox operation path is invalid.");
     }
 
-    const { apiKey } = getRobloxConfig();
+    const config = await getUserRobloxConfig(user.id);
+    if (!config) {
+      throw new HttpResponseError(409, "Lengkapi Creator ID dan API key Roblox di halaman Setup.");
+    }
     let response: Response;
     try {
       response = await fetch(`https://apis.roblox.com/assets/v1/${upload.operation_path}`, {
-        headers: { "x-api-key": apiKey },
+        headers: { "x-api-key": config.apiKey },
         signal: AbortSignal.timeout(10000),
       });
     } catch {

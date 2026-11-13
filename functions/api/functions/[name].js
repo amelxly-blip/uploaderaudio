@@ -7,6 +7,7 @@ import {
 } from "../../_shared/auth.js";
 
 const ALLOWED_FUNCTIONS = new Set([
+  "roblox-configure",
   "roblox-history",
   "roblox-operation",
   "roblox-status",

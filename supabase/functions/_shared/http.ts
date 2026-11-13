@@ -132,12 +132,19 @@ export function decodeHeader(value: string | null, label: string, maximumLength:
   return normalized;
 }
 
-export async function readBoundedBody(request: Request, maximumBytes: number): Promise<Uint8Array> {
+export async function readBoundedBody(
+  request: Request,
+  maximumBytes: number,
+  messages: { tooLarge: string; empty: string } = {
+    tooLarge: "Ukuran file maksimal 20 MB.",
+    empty: "Pilih file audio sebelum upload.",
+  },
+): Promise<Uint8Array> {
   const declaredLength = request.headers.get("Content-Length");
   if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maximumBytes)) {
-    throw new HttpResponseError(413, "Ukuran file maksimal 20 MB.");
+    throw new HttpResponseError(413, messages.tooLarge);
   }
-  if (!request.body) throw new HttpResponseError(400, "Pilih file audio sebelum upload.");
+  if (!request.body) throw new HttpResponseError(400, messages.empty);
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -148,11 +155,11 @@ export async function readBoundedBody(request: Request, maximumBytes: number): P
     length += value.length;
     if (length > maximumBytes) {
       await reader.cancel();
-      throw new HttpResponseError(413, "Ukuran file maksimal 20 MB.");
+      throw new HttpResponseError(413, messages.tooLarge);
     }
     chunks.push(value);
   }
-  if (length === 0) throw new HttpResponseError(400, "Pilih file audio sebelum upload.");
+  if (length === 0) throw new HttpResponseError(400, messages.empty);
 
   const result = new Uint8Array(length);
   let offset = 0;
@@ -161,23 +168,6 @@ export async function readBoundedBody(request: Request, maximumBytes: number): P
     offset += chunk.length;
   }
   return result;
-}
-
-export function getRobloxConfig(): { apiKey: string; creator: { userId: number } | { groupId: number }; label: string } {
-  const apiKey = Deno.env.get("ROBLOX_OPEN_CLOUD_API_KEY")?.trim() ?? "";
-  const creatorType = Deno.env.get("ROBLOX_CREATOR_TYPE")?.trim().toLowerCase() ?? "";
-  const creatorId = Deno.env.get("ROBLOX_CREATOR_ID")?.trim() ?? "";
-  const numericId = Number(creatorId);
-  if (!apiKey || !["user", "group"].includes(creatorType) || !/^\d+$/.test(creatorId)
-      || !Number.isSafeInteger(numericId) || numericId <= 0) {
-    throw new HttpResponseError(503, "Open Cloud belum dikonfigurasi dengan benar di Supabase.");
-  }
-  const creator = creatorType === "group" ? { groupId: numericId } : { userId: numericId };
-  return {
-    apiKey,
-    creator,
-    label: `${creatorType === "group" ? "Group" : "User"} · ${creatorId}`,
-  };
 }
 
 export function robloxError(status: number): HttpResponseError {

@@ -329,6 +329,21 @@
     .config-caption { color: var(--muted); font-size: 10px; }
     .config-value { margin-top: 5px; font-size: 11px; font-weight: 650; }
     .config-pill { padding: 6px 9px; border: 1px solid var(--line); border-radius: 20px; color: var(--muted); font-size: 9px; white-space: nowrap; }
+    .credential-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 14px; }
+    .field select {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0e0f11;
+      color: var(--text);
+      font-size: 12px;
+    }
+    .field input:disabled, .field select:disabled { cursor: not-allowed; opacity: .55; }
+    .credential-help { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .credential-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+    .credential-actions .primary { min-width: 175px; }
     .guide-list { display: grid; gap: 0; margin-top: 17px; }
     .guide-step { display: grid; grid-template-columns: 26px 1fr; gap: 11px; padding: 14px 0; border-top: 1px solid var(--line-soft); }
     .step-marker { display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--silver); font-size: 10px; }
@@ -406,6 +421,8 @@
       .dropzone { min-height: 205px; }
       .upload-aside { padding: 17px; }
       .setup-card { padding: 17px; }
+      .credential-grid { grid-template-columns: 1fr; gap: 0; }
+      .credential-actions { align-items: stretch; flex-direction: column; }
       .history-table { min-width: 550px; }
       .mobile-nav {
         position: fixed;
@@ -460,7 +477,7 @@
       </nav>
       <div class="rail-bottom">
         <div class="cloud-state"><span class="state-dot" id="railCloudDot"></span><span id="railCloudText">Open Cloud belum diatur</span></div>
-        <div class="rail-footnote">File dikirim langsung ke Roblox Open Cloud. API key tidak pernah dikirim ke browser.</div>
+        <div class="rail-footnote">Audio diproses lewat Roblox Open Cloud. API key tidak pernah dikirim kembali ke browser.</div>
       </div>
     </aside>
 
@@ -554,29 +571,56 @@
 
         <section class="page" id="page-setup">
           <div class="page-heading">
-            <div class="eyebrow">PENGATURAN SERVER</div>
+            <div class="eyebrow">PENGATURAN AKUN</div>
             <h1>Setup Roblox</h1>
-            <p class="page-intro">Kunci Open Cloud dan kunci penghubung autentikasi disimpan sebagai secrets Supabase Edge Function. Halaman ini tidak mengirim ataupun menyimpan API key di browser.</p>
+            <p class="page-intro">Hubungkan Creator Roblox milikmu ke Discord yang sedang login. Setiap akun memiliki konfigurasi dan kuota upload sendiri.</p>
           </div>
           <section class="surface setup-card">
-            <div class="surface-title">Status koneksi</div>
-            <div class="surface-subtitle">Status Open Cloud dibaca dari Supabase dan secrets tidak ditampilkan.</div>
+            <div class="surface-title">Status koneksi akun ini</div>
+            <div class="surface-subtitle">API key hanya dikirim saat disimpan dan dienkripsi di server. Kunci yang tersimpan tidak pernah ditampilkan kembali.</div>
             <div class="config-row"><div><div class="config-caption">Creator tujuan</div><div class="config-value" id="setupCreator">Belum diatur</div></div><span class="config-pill" id="setupCloudBadge">BELUM AKTIF</span></div>
-            <div class="config-row"><div><div class="config-caption">Open Cloud API key</div><div class="config-value">Disimpan di server · tidak ditampilkan</div></div><span class="config-pill" id="setupKeyBadge">BELUM AKTIF</span></div>
+            <div class="config-row"><div><div class="config-caption">Open Cloud API key</div><div class="config-value">Disimpan terenkripsi · tidak ditampilkan</div></div><span class="config-pill" id="setupKeyBadge">BELUM AKTIF</span></div>
           </section>
           <section class="surface setup-card">
-            <div class="surface-title">Menghubungkan Open Cloud</div>
-            <div class="surface-subtitle">Buat key dengan akses minimal, lalu simpan konfigurasi server di Supabase.</div>
+            <div class="surface-title">Konfigurasi Roblox</div>
+            <div class="surface-subtitle">Isi creator ID dan API key Open Cloud milik akun atau grup yang akan digunakan.</div>
+            <form id="robloxCredentialsForm" novalidate>
+              <div class="credential-grid">
+                <div class="field">
+                  <label for="robloxCreatorType">Jenis creator</label>
+                  <select id="robloxCreatorType" name="creatorType">
+                    <option value="user">Akun pengguna</option>
+                    <option value="group">Grup</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="robloxCreatorId">Creator ID</label>
+                  <input id="robloxCreatorId" name="creatorId" type="text" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="Contoh: 123456789" required>
+                </div>
+              </div>
+              <div class="field">
+                <label for="robloxApiKey">Open Cloud API key</label>
+                <input id="robloxApiKey" name="apiKey" type="password" autocomplete="new-password" maxlength="4096" placeholder="Masukkan API key Roblox">
+                <p class="credential-help" id="apiKeyHelp">Wajib diisi saat konfigurasi pertama. Setelah tersimpan, kolom ini dikosongkan. Isi lagi hanya untuk mengganti API key.</p>
+              </div>
+              <div class="credential-actions">
+                <button class="primary" id="saveRobloxConfig" type="submit">Simpan konfigurasi</button>
+                <span class="config-caption">Tersimpan untuk Discord yang sedang login.</span>
+              </div>
+              <div class="status-message" id="credentialsStatus" role="status" aria-live="polite"></div>
+            </form>
+          </section>
+          <section class="surface setup-card">
+            <div class="surface-title">Menyiapkan API key</div>
+            <div class="surface-subtitle">Buat key resmi dengan izin sekecil mungkin dan batasi ke creator yang sesuai.</div>
             <div class="guide-list">
-              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat API key resmi</b>Di Creator Dashboard, pilih API Keys lalu beri akses Assets dengan izin yang diperlukan untuk creator yang akan mengunggah.</div></div>
-              <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Simpan secrets di Supabase</b>Di Edge Functions → Secrets, atur <code>APP_ORIGINS</code>, <code>AUTH_BRIDGE_SECRET</code>, <code>ROBLOX_OPEN_CLOUD_API_KEY</code>, <code>ROBLOX_CREATOR_TYPE</code>, dan <code>ROBLOX_CREATOR_ID</code>. Samakan bridge secret dengan secret di Cloudflare Pages.</div></div>
-              <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Akses untuk semua akun Discord</b>Setiap akun yang berhasil login bisa upload, dengan batas 5 percobaan per Discord ID dalam 24 jam.</div></div>
-              <div class="guide-step"><span class="step-marker">4</span><div class="step-copy"><b>Batasi creator dan izin key</b>Gunakan tipe <code>user</code> atau <code>group</code>; creator ID diambil dari profil atau halaman grup. Pastikan API key dibatasi ke creator yang sesuai.</div></div>
-              <div class="guide-step"><span class="step-marker">5</span><div class="step-copy"><b>Periksa status koneksi</b>Simpan secrets lalu segarkan halaman ini. Coba upload hanya untuk audio yang kamu miliki atau berizin.</div></div>
+              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat key di Creator Dashboard</b>Pilih API Keys dan beri izin Assets yang dibutuhkan untuk upload audio.</div></div>
+              <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Batasi izin dan creator</b>Gunakan key dengan akses minimum dan batasi hanya ke akun pengguna atau grup tujuan.</div></div>
+              <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Simpan di form ini</b>Pilih jenis creator, masukkan ID-nya, lalu tempel API key di kolom konfigurasi di atas. Jangan kirim API key lewat chat.</div></div>
             </div>
             <a class="external-link" href="https://create.roblox.com/docs/cloud/guides/usage-assets" target="_blank" rel="noreferrer">Panduan aset resmi Roblox ↗</a>
           </section>
-          <div class="notice">Open Cloud memakai moderation, validasi, dan kuota Roblox. Aplikasi ini tidak melewati pemeriksaan tersebut dan tidak menyimpan cookie Roblox.</div>
+          <div class="notice">Setiap Discord mendapat maksimal 5 percobaan upload dalam periode berjalan 24 jam. Kuota Roblox, moderasi, dan izin creator tetap berlaku. Aplikasi ini tidak menyimpan cookie Roblox.</div>
         </section>
 
         <section class="page" id="page-history">

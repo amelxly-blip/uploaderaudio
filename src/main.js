@@ -6,6 +6,8 @@ let me = {
   authenticated: false,
   robloxConfigured: false,
   apiKeyConfigured: false,
+  creatorType: "user",
+  creatorId: "",
   creatorLabel: "",
 };
 let selectedFile = null;
@@ -113,12 +115,16 @@ function updateIdentity() {
   $("#railCloudDot").classList.toggle("ready", !!me.robloxConfigured);
   $("#railCloudText").textContent = me.robloxConfigured ? "Open Cloud terhubung" : "Open Cloud belum diatur";
   $("#homeCloudStatus").textContent = me.robloxConfigured ? "Open Cloud siap" : "Belum dikonfigurasi";
-  $("#homeCloudCreator").textContent = me.creatorLabel || "API key disimpan di Edge Function";
+  $("#homeCloudCreator").textContent = me.creatorLabel || "Atur API key pribadi di Setup Roblox";
   $("#setupCreator").textContent = me.creatorLabel || "Belum diatur";
   $("#setupCloudBadge").textContent = me.robloxConfigured ? "TERHUBUNG" : "BELUM AKTIF";
   $("#setupKeyBadge").textContent = me.apiKeyConfigured ? "TERSIMPAN AMAN" : "BELUM AKTIF";
+  $("#robloxCreatorType").disabled = !signedIn;
+  $("#robloxCreatorId").disabled = !signedIn;
+  $("#robloxApiKey").disabled = !signedIn;
+  $("#saveRobloxConfig").disabled = !signedIn;
   $("#uploadCloudDot").classList.toggle("ready", !!me.robloxConfigured);
-  $("#uploadCloudText").textContent = me.robloxConfigured ? `Tujuan: ${me.creatorLabel}` : "Open Cloud belum dikonfigurasi di Edge Function";
+  $("#uploadCloudText").textContent = me.robloxConfigured ? `Tujuan: ${me.creatorLabel}` : "Atur Creator ID dan API key di Setup Roblox";
   $("#reviewUpload").disabled = !signedIn || !me.robloxConfigured;
 }
 
@@ -126,14 +132,73 @@ async function loadStatus() {
   if (!me.authenticated) {
     me.robloxConfigured = false;
     me.creatorLabel = "";
+    me.creatorType = "user";
+    me.creatorId = "";
+    $("#robloxCredentialsForm").reset();
+    $("#credentialsStatus").className = "status-message";
+    $("#credentialsStatus").textContent = "";
     updateIdentity();
     return;
   }
   const data = await callFunction("roblox-status");
   me.robloxConfigured = data.robloxConfigured === true;
   me.apiKeyConfigured = data.apiKeyConfigured === true;
+  me.creatorType = data.creatorType === "group" ? "group" : "user";
+  me.creatorId = typeof data.creatorId === "string" ? data.creatorId : "";
   me.creatorLabel = typeof data.creatorLabel === "string" ? data.creatorLabel : "";
+  $("#robloxCreatorType").value = me.creatorType;
+  $("#robloxCreatorId").value = me.creatorId;
   updateIdentity();
+}
+
+function showCredentialsStatus(type, message) {
+  const status = $("#credentialsStatus");
+  status.className = `status-message visible ${type}`;
+  status.textContent = message;
+}
+
+async function saveRobloxCredentials(event) {
+  event.preventDefault();
+  const creatorType = $("#robloxCreatorType").value;
+  const creatorId = $("#robloxCreatorId").value.trim();
+  const apiKey = $("#robloxApiKey").value;
+  if (!me.authenticated) {
+    showCredentialsStatus("error", "Masuk dengan Discord sebelum menyimpan konfigurasi.");
+    return;
+  }
+  if (!/^[1-9][0-9]{0,15}$/.test(creatorId) || !Number.isSafeInteger(Number(creatorId))) {
+    showCredentialsStatus("error", "Masukkan Creator ID Roblox berupa angka yang valid.");
+    return;
+  }
+  if (!me.apiKeyConfigured && !apiKey.trim()) {
+    showCredentialsStatus("error", "Masukkan API key Open Cloud untuk konfigurasi pertama.");
+    $("#robloxApiKey").focus();
+    return;
+  }
+
+  const button = $("#saveRobloxConfig");
+  button.disabled = true;
+  button.textContent = "Menyimpan...";
+  try {
+    const data = await callFunction("roblox-configure", {
+      body: { creatorType, creatorId, apiKey },
+    });
+    me.robloxConfigured = data.robloxConfigured === true;
+    me.apiKeyConfigured = data.apiKeyConfigured === true;
+    me.creatorType = data.creatorType === "group" ? "group" : "user";
+    me.creatorId = typeof data.creatorId === "string" ? data.creatorId : creatorId;
+    me.creatorLabel = typeof data.creatorLabel === "string" ? data.creatorLabel : "";
+    $("#robloxApiKey").value = "";
+    $("#robloxCreatorType").value = me.creatorType;
+    $("#robloxCreatorId").value = me.creatorId;
+    updateIdentity();
+    showCredentialsStatus("success", "Konfigurasi Roblox tersimpan untuk akun Discord ini.");
+  } catch (error) {
+    showCredentialsStatus("error", error.message || "Konfigurasi tidak bisa disimpan. Coba lagi.");
+  } finally {
+    button.textContent = "Simpan konfigurasi";
+    button.disabled = !me.authenticated;
+  }
 }
 
 async function loadHistory() {
@@ -196,7 +261,12 @@ async function refreshSession(showErrors = false) {
     me.discordUser = null;
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
+    me.creatorType = "user";
+    me.creatorId = "";
     me.creatorLabel = "";
+    $("#robloxCredentialsForm").reset();
+    $("#credentialsStatus").className = "status-message";
+    $("#credentialsStatus").textContent = "";
     updateIdentity();
     history = [];
     renderHistory();
@@ -210,7 +280,12 @@ async function refreshSession(showErrors = false) {
   if (!me.authenticated) {
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
+    me.creatorType = "user";
+    me.creatorId = "";
     me.creatorLabel = "";
+    $("#robloxCredentialsForm").reset();
+    $("#credentialsStatus").className = "status-message";
+    $("#credentialsStatus").textContent = "";
     history = [];
     renderHistory();
     renderRecent();
@@ -266,10 +341,15 @@ async function logout() {
 
   me = {
     authenticated: false,
-    robloxConfigured: me.robloxConfigured,
-    apiKeyConfigured: me.apiKeyConfigured,
-    creatorLabel: me.creatorLabel,
+    robloxConfigured: false,
+    apiKeyConfigured: false,
+    creatorType: "user",
+    creatorId: "",
+    creatorLabel: "",
   };
+  $("#robloxCredentialsForm").reset();
+  $("#credentialsStatus").className = "status-message";
+  $("#credentialsStatus").textContent = "";
   history = [];
   renderHistory();
   renderRecent();
@@ -332,7 +412,7 @@ function handleFile(file) {
 function openReview() {
   if (!me.authenticated) { showToast("Masuk dengan Discord dulu."); return; }
   if (!me.robloxConfigured) {
-    showUploadStatus("error", "Open Cloud belum diatur. Periksa secret Edge Function di Supabase.");
+    showUploadStatus("error", "Konfigurasi Roblox belum lengkap. Atur Creator ID dan API key di Setup Roblox.");
     return;
   }
   const name = $("#audioName").value.trim();
@@ -344,7 +424,7 @@ function openReview() {
   }
   $("#reviewFile").textContent = `${selectedFile.name} · ${formatSize(selectedFile.size)}`;
   $("#reviewName").textContent = name;
-  $("#reviewCreator").textContent = me.creatorLabel || "Creator Roblox yang dikonfigurasi di Supabase";
+  $("#reviewCreator").textContent = me.creatorLabel || "Creator Roblox yang terhubung";
   $("#rightsConfirm").checked = false;
   $("#confirmUpload").disabled = true;
   $("#confirmDialog").showModal();
@@ -449,6 +529,7 @@ $("#dropzone").addEventListener("drop", (event) => {
   handleFile(event.dataTransfer.files[0]);
 });
 $("#reviewUpload").addEventListener("click", openReview);
+$("#robloxCredentialsForm").addEventListener("submit", saveRobloxCredentials);
 $("#cancelReview").addEventListener("click", () => $("#confirmDialog").close());
 $("#rightsConfirm").addEventListener("change", (event) => { $("#confirmUpload").disabled = !event.target.checked; });
 $("#confirmUpload").addEventListener("click", submitUpload);

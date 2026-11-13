@@ -9,7 +9,6 @@ import {
   checkOrigin,
   decodeHeader,
   errorResponse,
-  getRobloxConfig,
   HttpResponseError,
   jsonResponse,
   preflightResponse,
@@ -17,6 +16,7 @@ import {
   robloxError,
   safeMessage,
 } from "../_shared/http.ts";
+import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 
 const DAILY_UPLOAD_LIMIT = 5;
 
@@ -33,7 +33,10 @@ Deno.serve(async (request: Request) => {
   try {
     const { user } = await authenticate(request);
     discordUserId = user.id;
-    const config = getRobloxConfig();
+    const config = await getUserRobloxConfig(user.id);
+    if (!config) {
+      throw new HttpResponseError(409, "Lengkapi Creator ID dan API key Roblox di halaman Setup sebelum upload.");
+    }
     const displayName = decodeHeader(request.headers.get("x-audio-name"), "Nama asset", 50);
     const fileName = decodeHeader(request.headers.get("x-audio-filename"), "Nama file", 255);
     const bytes = await readBoundedBody(request, MAX_AUDIO_SIZE);

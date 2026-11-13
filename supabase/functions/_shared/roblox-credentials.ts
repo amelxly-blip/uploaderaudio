@@ -1,0 +1,154 @@
+import { decryptApiKey, encryptApiKey } from "./credential-encryption.js";
+import { adminClient, HttpResponseError } from "./http.ts";
+
+type CreatorType = "user" | "group";
+
+export interface RobloxConfig {
+  apiKey: string;
+  creator: { userId: number } | { groupId: number };
+  creatorType: CreatorType;
+  creatorId: string;
+  label: string;
+}
+
+interface CredentialInput {
+  creatorType: CreatorType;
+  creatorId: string;
+  apiKey: string;
+}
+
+const API_KEY_MAX_LENGTH = 4096;
+
+function encryptionSecret(): string {
+  const secret = Deno.env.get("AUTH_BRIDGE_SECRET") ?? "";
+  if (new TextEncoder().encode(secret).byteLength < 32) {
+    throw new HttpResponseError(503, "Penyimpanan API key belum siap. Hubungi pengelola.");
+  }
+  return secret;
+}
+
+function creatorLabel(creatorType: CreatorType, creatorId: string): string {
+  return `${creatorType === "group" ? "Group" : "User"} · ${creatorId}`;
+}
+
+function parseCredentialInput(body: unknown): CredentialInput {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new HttpResponseError(400, "Konfigurasi Roblox tidak valid.");
+  }
+  const input = body as Record<string, unknown>;
+  const creatorType = input.creatorType;
+  const creatorId = typeof input.creatorId === "string" ? input.creatorId.trim() : "";
+  const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
+  const numericId = Number(creatorId);
+
+  if (creatorType !== "user" && creatorType !== "group") {
+    throw new HttpResponseError(400, "Pilih jenis creator Roblox yang valid.");
+  }
+  if (!/^[1-9][0-9]{0,15}$/.test(creatorId) || !Number.isSafeInteger(numericId)) {
+    throw new HttpResponseError(400, "Creator ID harus berupa angka Roblox yang valid.");
+  }
+  if (apiKey.length > API_KEY_MAX_LENGTH || /[\u0000-\u001f\u007f]/.test(apiKey)) {
+    throw new HttpResponseError(400, "API key tidak valid.");
+  }
+
+  return { creatorType, creatorId, apiKey };
+}
+
+export async function getUserRobloxConfig(discordUserId: string): Promise<RobloxConfig | null> {
+  const { data, error } = await adminClient
+    .from("discord_roblox_credentials")
+    .select("creator_type,creator_id,api_key_ciphertext,api_key_nonce")
+    .eq("discord_user_id", discordUserId)
+    .maybeSingle();
+  if (error) throw new Error("Could not retrieve saved Roblox credentials.");
+  if (!data) return null;
+
+  const creatorType = data.creator_type;
+  const creatorId = data.creator_id;
+  if (
+    (creatorType !== "user" && creatorType !== "group")
+    || typeof creatorId !== "string"
+    || !/^[1-9][0-9]{0,15}$/.test(creatorId)
+    || !Number.isSafeInteger(Number(creatorId))
+  ) {
+    throw new Error("Stored Roblox creator configuration is invalid.");
+  }
+
+  let apiKey: string;
+  try {
+    apiKey = await decryptApiKey(
+      data.api_key_ciphertext,
+      data.api_key_nonce,
+      encryptionSecret(),
+      discordUserId,
+    );
+  } catch (error) {
+    if (error instanceof HttpResponseError) throw error;
+    throw new HttpResponseError(
+      409,
+      "API key tersimpan tidak bisa dibuka. Masukkan ulang API key di halaman Setup.",
+    );
+  }
+  if (!apiKey) {
+    throw new HttpResponseError(409, "API key tersimpan tidak valid. Masukkan ulang API key di halaman Setup.");
+  }
+
+  const numericId = Number(creatorId);
+  const creator = creatorType === "group" ? { groupId: numericId } : { userId: numericId };
+  return {
+    apiKey,
+    creator,
+    creatorType,
+    creatorId,
+    label: creatorLabel(creatorType, creatorId),
+  };
+}
+
+export async function saveUserRobloxConfig(discordUserId: string, body: unknown): Promise<{
+  creatorType: CreatorType;
+  creatorId: string;
+  creatorLabel: string;
+}> {
+  const input = parseCredentialInput(body);
+  const { data: existing, error: lookupError } = await adminClient
+    .from("discord_roblox_credentials")
+    .select("discord_user_id")
+    .eq("discord_user_id", discordUserId)
+    .maybeSingle();
+  if (lookupError) throw new Error("Could not check existing Roblox credentials.");
+  if (!input.apiKey && !existing) {
+    throw new HttpResponseError(400, "Masukkan API key Roblox untuk konfigurasi pertama.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  if (input.apiKey) {
+    const encrypted = await encryptApiKey(input.apiKey, encryptionSecret(), discordUserId);
+    const { error } = await adminClient
+      .from("discord_roblox_credentials")
+      .upsert({
+        discord_user_id: discordUserId,
+        creator_type: input.creatorType,
+        creator_id: input.creatorId,
+        api_key_ciphertext: encrypted.ciphertext,
+        api_key_nonce: encrypted.nonce,
+        updated_at: updatedAt,
+      });
+    if (error) throw new Error("Could not save encrypted Roblox credentials.");
+  } else {
+    const { error } = await adminClient
+      .from("discord_roblox_credentials")
+      .update({
+        creator_type: input.creatorType,
+        creator_id: input.creatorId,
+        updated_at: updatedAt,
+      })
+      .eq("discord_user_id", discordUserId);
+    if (error) throw new Error("Could not update Roblox creator configuration.");
+  }
+
+  return {
+    creatorType: input.creatorType,
+    creatorId: input.creatorId,
+    creatorLabel: creatorLabel(input.creatorType, input.creatorId),
+  };
+}

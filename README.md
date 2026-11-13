@@ -19,14 +19,15 @@ The Vite development server only serves the frontend. The `/api/*` authenticatio
 ## Supabase setup
 
 1. Create a Supabase project. Discord sign-in does **not** need to be enabled in Supabase Auth.
-2. Set `AUTH_BRIDGE_SECRET` in **Edge Functions → Secrets**. Use a random secret of at least 32 bytes; set the exact same value as a Cloudflare Pages Function secret.
+2. Set `AUTH_BRIDGE_SECRET` in **Edge Functions → Secrets**. Use a random secret of at least 32 bytes; set the exact same value as a Cloudflare Pages Function secret. Keep this value stable: it also derives the encryption key for users' saved Roblox API keys, so rotating it means each user must save their Roblox API key again.
 3. Set `APP_ORIGINS` to the Cloudflare Pages origin, for example `https://uploaderaudio.pages.dev`. Add additional trusted origins as a comma-separated list.
-4. Set `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_CREATOR_TYPE` (`user` or `group`), and `ROBLOX_CREATOR_ID` in Edge Function secrets.
-5. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once to apply migrations and deploy Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
+4. Add `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, and `SUPABASE_DB_URL` as GitHub Actions repository secrets, then run **Actions → Test and deploy Supabase → Run workflow** once to apply migrations and deploy Edge Functions. Get `SUPABASE_DB_URL` from the project's **Connect → Session pooler** settings; replace `[YOUR-PASSWORD]` with the database password and keep the full URL secret.
 Any Discord account that successfully signs in can use the uploader. Each account can submit up to 5 valid audio upload attempts in any
 rolling 24-hour period. Supabase stores the quota across logout, restarts, and
-deployments; failed Roblox processing attempts still count. Uploads use the site's
-configured Roblox creator and API key, so the creator's Roblox quota also applies.
+deployments; failed Roblox processing attempts still count. Each Discord account
+enters its own Roblox Creator ID and Open Cloud API key on the site's Setup page.
+The API key is encrypted server-side and is never returned to the browser.
+Roblox's creator permissions and upload quota still apply.
 
 ## Cloudflare Pages and Discord
 
@@ -46,8 +47,8 @@ configured Roblox creator and API key, so the creator's Roblox quota also applie
 
 After changing Pages variables or secrets, trigger a new production deployment from `main` so Pages Functions receive the updated values.
 
-The GitHub workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Configure the Roblox API key only in Supabase and Discord/session secrets only in Cloudflare.
+The GitHub workflow `.github/workflows/supabase-deploy.yml` runs tests and a production build, applies pending migrations, and deploys Edge Functions when Supabase files change on `main`. Users enter their own Roblox credentials on the Setup page; do not configure user API keys in Supabase or Cloudflare.
 
 ## Tests
 
-`npm test` runs the mocked audio validation and auth-token tests. Tests do not call Discord or Roblox and do not upload assets.
+`npm test` runs the mocked audio validation, auth-token, and credential-encryption tests. Tests do not call Discord or Roblox and do not upload assets.
