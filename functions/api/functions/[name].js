@@ -13,6 +13,7 @@ const ALLOWED_FUNCTIONS = new Set([
   "roblox-operation",
   "roblox-status",
   "roblox-upload",
+  "site-dashboard",
 ]);
 
 export async function onRequestPost({ request, env, params }) {

@@ -54,6 +54,8 @@ let uploadInProgress = false;
 let previewUrl = null;
 let toastTimer;
 let history = [];
+let dashboard = null;
+let publicStats = null;
 
 function showToast(message) {
   const toast = $("#toast");
@@ -137,6 +139,41 @@ function creatorDisplayName() {
     : `${me.robloxProfile.displayName} (@${me.robloxProfile.username})`;
 }
 
+function formatCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count).toLocaleString("id-ID") : "—";
+}
+
+function renderMembership() {
+  const signedIn = me.authenticated && !!me.discordUser;
+  const statistics = dashboard || publicStats;
+  const expiresAt = dashboard?.vipExpiresAt ? Date.parse(dashboard.vipExpiresAt) : NaN;
+  const vipActive = Boolean(dashboard?.isVip && Number.isFinite(expiresAt) && expiresAt > Date.now());
+  const plan = $("#membershipPlan");
+  plan.classList.toggle("vip", vipActive);
+  $("#membershipTitle").textContent = vipActive ? "Premium" : "Gratis";
+  $("#membershipCopy").textContent = !signedIn
+    ? "Masuk dengan Discord untuk melihat kuota upload akun."
+    : vipActive
+      ? "Upload tanpa batas aplikasi selama masa Premium aktif."
+      : `Sisa ${formatCount(dashboard?.quotaRemaining)} dari 5 upload dalam 24 jam.`;
+  const expiry = $("#membershipExpiry");
+  expiry.hidden = !vipActive;
+  if (vipActive) {
+    const remaining = Math.max(0, expiresAt - Date.now());
+    const days = Math.floor(remaining / 86_400_000);
+    const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+    const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+    const seconds = Math.floor((remaining % 60_000) / 1000);
+    expiry.textContent = `Berakhir dalam ${days} hari ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  $("#buyVipButton").hidden = !signedIn;
+  $("#membershipUploadButton").hidden = !signedIn;
+  $("#totalVisitors").textContent = formatCount(statistics?.totalVisitors);
+  $("#totalVip").textContent = formatCount(statistics?.totalVip);
+  $("#totalUploads").textContent = formatCount(statistics?.totalUploads);
+}
+
 function updatePlaybackSpeedHelp() {
   const speed = Number($("#playbackSpeed").value);
   $("#speedHelp").textContent =
@@ -205,7 +242,9 @@ function updateIdentity() {
     ? `Halo, ${escapeHtml(user.displayName || user.username)}.<br>Mulai dari audio.`
     : "Audio siap.<br>Ruangnya juga.";
   $("#heroText").textContent = signedIn
-    ? "Pilih file dan kirim lewat Roblox Open Cloud. Setiap akun Discord mendapat 5 upload per 24 jam."
+    ? dashboard?.isVip
+      ? "Upload audio, decal, dan model lewat Roblox Open Cloud dengan kuota aplikasi tanpa batas."
+      : "Pilih file dan kirim lewat Roblox Open Cloud. Akun gratis mendapat 5 upload per 24 jam."
     : "Unggah audio milikmu ke Roblox lewat Open Cloud. Masuk dengan Discord untuk menghubungkan workspace.";
   $("#heroAction").innerHTML = signedIn
     ? "Mulai upload <span>↗</span>"
@@ -213,7 +252,7 @@ function updateIdentity() {
   $("#heroAction").onclick = () => signedIn ? navigate("upload") : login();
   $("#signedOutNotice").hidden = signedIn;
   $("#signedOutNotice").textContent =
-    "Masuk dengan Discord untuk membuka upload, setup, dan riwayat. Setiap akun mendapat 5 upload per 24 jam.";
+    "Masuk dengan Discord untuk membuka upload, setup, dan riwayat. Paket gratis mendapat 5 upload per 24 jam.";
   $$("[data-lock]").forEach((lock) => { lock.hidden = signedIn; });
   $("#railCloudDot").classList.toggle("ready", !!me.robloxConfigured);
   $("#railCloudText").textContent = me.robloxConfigured ? "Open Cloud terhubung" : "Open Cloud belum diatur";
@@ -241,6 +280,7 @@ function updateIdentity() {
     ? `Tujuan: ${creatorDisplayName()}`
     : "Atur Creator ID dan API key di Setup Roblox";
   $("#reviewUpload").disabled = !signedIn || !me.robloxConfigured;
+  renderMembership();
 }
 
 async function loadStatus() {
@@ -394,12 +434,85 @@ async function callFunction(name, { body = {}, headers = {} } = {}) {
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(typeof data?.error === "string" ? data.error : "Permintaan ke layanan uploader gagal.");
+    const error = new Error(typeof data?.error === "string" ? data.error : "Permintaan ke layanan uploader gagal.");
+    error.status = response.status;
+    throw error;
   }
   if (!data || typeof data !== "object") {
     throw new Error("Layanan uploader mengembalikan respons yang tidak valid.");
   }
   return data;
+}
+
+async function loadDashboard() {
+  if (!me.authenticated) return;
+  const data = await callFunction("site-dashboard", {});
+  if (
+    !data
+    || !Number.isFinite(Number(data.totalVisitors))
+    || !Number.isFinite(Number(data.totalVip))
+    || !Number.isFinite(Number(data.totalUploads))
+    || typeof data.isVip !== "boolean"
+  ) {
+    throw new Error("Ringkasan dashboard dari server tidak valid.");
+  }
+  dashboard = data;
+  publicStats = {
+    totalVisitors: data.totalVisitors,
+    totalVip: data.totalVip,
+    totalUploads: data.totalUploads,
+  };
+  renderMembership();
+  $("#heroText").textContent = data.isVip
+    ? "Upload audio, decal, dan model lewat Roblox Open Cloud dengan kuota aplikasi tanpa batas."
+    : "Pilih file dan kirim lewat Roblox Open Cloud. Akun gratis mendapat 5 upload per 24 jam.";
+}
+
+async function loadPublicStats() {
+  const response = await fetch("/api/public/stats", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    cache: "no-store",
+    credentials: "omit",
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : "Statistik situs gagal dimuat.");
+  }
+  if (
+    !data
+    || !Number.isFinite(Number(data.totalVisitors))
+    || !Number.isFinite(Number(data.totalVip))
+    || !Number.isFinite(Number(data.totalUploads))
+  ) {
+    throw new Error("Statistik situs dari server tidak valid.");
+  }
+  publicStats = data;
+  if (!me.authenticated) renderMembership();
+}
+
+async function clearBlockedSession() {
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+  }).catch(() => {});
+  me.authenticated = false;
+  me.discordUser = null;
+  me.robloxConfigured = false;
+  me.apiKeyConfigured = false;
+  me.creatorType = "user";
+  me.creatorId = "";
+  me.creatorLabel = "";
+  me.robloxProfile = null;
+  dashboard = null;
+  $("#robloxCredentialsForm").reset();
+  history = [];
+  renderHistory();
+  renderRecent();
+  updateIdentity();
+  showToast("Akun Discord ini diblokir dari web.");
 }
 
 async function refreshSession(showErrors = false) {
@@ -416,6 +529,7 @@ async function refreshSession(showErrors = false) {
   } catch (error) {
     me.authenticated = false;
     me.discordUser = null;
+    dashboard = null;
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
     me.creatorType = "user";
@@ -436,6 +550,7 @@ async function refreshSession(showErrors = false) {
   me.authenticated = !!data.user;
   me.discordUser = discordUser(data.user);
   if (!me.authenticated) {
+    dashboard = null;
     me.robloxConfigured = false;
     me.apiKeyConfigured = false;
     me.creatorType = "user";
@@ -453,9 +568,14 @@ async function refreshSession(showErrors = false) {
 
   updateIdentity();
   try {
+    await loadDashboard();
     await loadStatus();
     await loadHistory();
   } catch (error) {
+    if (error.status === 403) {
+      await clearBlockedSession();
+      return;
+    }
     history = [];
     renderHistory();
     renderRecent();
@@ -473,6 +593,14 @@ async function loadSession() {
   }
 
   await refreshSession(true);
+  if (!me.authenticated) {
+    try {
+      await loadPublicStats();
+    } catch (error) {
+      console.error("Could not load public site statistics.", error);
+      showToast(error.message);
+    }
+  }
   if (authError) {
     showToast(authError === "denied"
       ? "Login Discord dibatalkan."
@@ -506,6 +634,7 @@ async function logout() {
     creatorLabel: "",
     robloxProfile: null,
   };
+  dashboard = null;
   $("#robloxCredentialsForm").reset();
   $("#credentialsStatus").className = "status-message";
   $("#credentialsStatus").textContent = "";
@@ -666,6 +795,14 @@ async function submitUpload() {
   } finally {
     $("#uploadProgress").hidden = true;
     setUploadBusy(false);
+    if (me.authenticated) {
+      try {
+        await loadDashboard();
+      } catch (error) {
+        if (error.status === 403) await clearBlockedSession();
+        else showToast(`Status kuota belum diperbarui: ${error.message}`);
+      }
+    }
   }
 }
 
@@ -715,6 +852,34 @@ $$("[data-tab]").forEach((button) => button.addEventListener("click", () => navi
 $$("[data-go]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.go)));
 $$("[data-asset-type]").forEach((button) => button.addEventListener("click", () => setAssetType(button.dataset.assetType)));
 $("#authButton").addEventListener("click", () => me.authenticated ? logout() : login());
+function openVipDialog() {
+  if (!me.authenticated || !me.discordUser) {
+    showToast("Masuk dengan Discord dulu untuk membeli VIP.");
+    return;
+  }
+  $("#vipDialog").showModal();
+}
+$("#buyVipButton").addEventListener("click", openVipDialog);
+$("#quickBuyVip").addEventListener("click", openVipDialog);
+$("#closeVipDialog").addEventListener("click", () => $("#vipDialog").close());
+$$("[data-vip-days]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const days = Number(button.dataset.vipDays);
+    const price = Number(button.dataset.vipPrice);
+    const duration = days === 7 ? "1 minggu" : days === 30 ? "1 bulan" : "2 bulan";
+    const amount = new Intl.NumberFormat("id-ID").format(price);
+    const message = [
+      "Halo, saya ingin premium di web anda.",
+      `Paket: ${duration} (${days} hari).`,
+      `Nominal: Rp${amount}.`,
+      `Discord: ${me.discordUser.displayName} (@${me.discordUser.username})`,
+      `Discord ID: ${me.discordUser.id}.`,
+    ].join("\n");
+    const url = `https://wa.me/6285860490674?text=${encodeURIComponent(message)}`;
+    $("#vipDialog").close();
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+});
 $("#fileInput").addEventListener("change", (event) => handleFile(event.target.files[0]));
 $("#removeFile").addEventListener("click", resetFile);
 $("#dropzone").addEventListener("dragover", (event) => { event.preventDefault(); $("#dropzone").classList.add("dragging"); });
@@ -736,6 +901,14 @@ updatePlaybackSpeedHelp();
 setAssetType("Audio");
 updateIdentity();
 void loadSession();
+setInterval(() => {
+  if (!me.authenticated) return;
+  void loadDashboard().catch(async (error) => {
+    if (error.status === 403) await clearBlockedSession();
+    else console.error("Dashboard heartbeat failed.", error);
+  });
+}, 30_000);
+setInterval(renderMembership, 1000);
 setTimeout(() => {
   const boot = $("#boot");
   boot.classList.add("done");

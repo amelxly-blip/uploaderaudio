@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="robots" content="noindex, nofollow">
+  <title>MCHLERN — Admin</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+      background: #090a0c;
+      color: #e5e6e9;
+      --panel: #151619;
+      --line: #34353a;
+      --muted: #898b92;
+      --silver: #c3c5ca;
+    }
+    * { box-sizing: border-box; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; }
+    button, input, select { font: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #c3c5ca; outline-offset: 3px; }
+    button { color: inherit; cursor: pointer; }
+    .topbar { display: flex; height: 62px; align-items: center; justify-content: space-between; padding: 0 max(20px, calc((100vw - 1200px) / 2)); border-bottom: 1px solid var(--line); background: #121316; }
+    .brand { font-size: 15px; font-weight: 850; letter-spacing: .12em; }
+    .brand span { color: var(--muted); font-weight: 450; }
+    .button { min-height: 38px; padding: 0 13px; border: 1px solid var(--line); border-radius: 10px; background: #222327; font-size: 11px; font-weight: 650; }
+    .button:hover { border-color: #606168; background: #2b2c31; }
+    .button.primary { border-color: #e8e9ec; background: #e4e5e8; color: #17181b; }
+    .button.danger { border-color: #654646; background: #241719; color: #e7aaaa; }
+    main { width: min(1200px, 100%); margin: 0 auto; padding: 34px 22px 60px; }
+    h1 { margin: 0; font-size: clamp(29px, 4vw, 42px); letter-spacing: -.055em; }
+    h2 { margin: 0; font-size: 14px; }
+    .intro { margin: 9px 0 24px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .notice { margin-bottom: 20px; padding: 12px 14px; border: 1px solid #46474d; border-radius: 11px; color: #c4c5cb; font-size: 11px; line-height: 1.55; }
+    .panel { padding: 19px; border: 1px solid var(--line); border-radius: 17px; background: linear-gradient(145deg, #1a1b1f, #131417); }
+    .login { width: min(420px, 100%); margin: 8vh auto 0; }
+    .field { margin-top: 15px; }
+    label { display: block; margin-bottom: 7px; color: #bcbec4; font-size: 10px; font-weight: 650; }
+    input, select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #0e0f11; color: #e5e6e9; font-size: 12px; }
+    .login .button { width: 100%; margin-top: 16px; }
+    .message { min-height: 18px; margin-top: 12px; color: #e7aaaa; font-size: 11px; line-height: 1.5; }
+    [hidden] { display: none !important; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat { min-height: 112px; display: flex; flex-direction: column; justify-content: space-between; padding: 16px; }
+    .stat-label { color: var(--muted); font-size: 10px; }
+    .stat-value { font-size: 31px; font-weight: 720; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
+    .tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 13px; margin-bottom: 16px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .card-copy { margin: 7px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .form-row { display: grid; grid-template-columns: minmax(0, 1fr) 145px auto; align-items: end; gap: 9px; }
+    .form-row .field { margin-top: 0; }
+    .form-row .button { min-height: 42px; }
+    .ban-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; align-items: end; gap: 9px; }
+    .ban-row .field { margin-top: 0; }
+    .ban-row .button { min-height: 42px; }
+    .lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .list-panel { min-width: 0; }
+    .list-head { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
+    .list-count { color: var(--muted); font-size: 10px; }
+    .list { display: grid; gap: 8px; padding-top: 10px; }
+    .empty { padding: 20px 4px; color: var(--muted); font-size: 11px; text-align: center; }
+    .person { display: flex; min-width: 0; align-items: center; gap: 9px; padding: 9px; border: 1px solid #292a2f; border-radius: 11px; background: #111215; }
+    .avatar { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid #494a50; border-radius: 50%; background: #292a2f; color: var(--silver); font-size: 10px; font-weight: 700; }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .person-copy { min-width: 0; flex: 1; }
+    .person-name { overflow: hidden; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .person-meta { overflow: hidden; margin-top: 4px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .person-actions { display: flex; flex: 0 0 auto; gap: 5px; }
+    .mini { min-height: 29px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: #202125; font-size: 9px; }
+    .mini.danger { border-color: #654646; color: #e7aaaa; }
+    .footnote { margin-top: 16px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    @media (max-width: 860px) {
+      .lists { grid-template-columns: 1fr 1fr; }
+      .lists .list-panel:last-child { grid-column: 1 / -1; }
+    }
+    @media (max-width: 620px) {
+      .topbar { height: 56px; padding: 0 15px; }
+      main { padding: 25px 14px 40px; }
+      .stats { gap: 7px; }
+      .stat { min-height: 100px; padding: 11px; }
+      .stat-value { font-size: 25px; }
+      .tools, .lists { grid-template-columns: 1fr; }
+      .lists .list-panel:last-child { grid-column: auto; }
+      .panel { padding: 15px; }
+      .form-row { grid-template-columns: 1fr 120px; }
+      .form-row .button { grid-column: 1 / -1; }
+      .ban-row { grid-template-columns: 1fr; }
+      .ban-row .button { width: 100%; }
+      .person { align-items: flex-start; }
+      .person-actions { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">MCHLERN <span>ADMIN</span></div>
+    <button class="button" id="logoutButton" type="button" hidden>Keluar</button>
+  </header>
+  <main>
+    <section class="login panel" id="loginPanel">
+      <h1>Admin panel</h1>
+      <p class="intro">Kelola akses Premium, pantau akun yang aktif, dan blokir akun Discord.</p>
+      <div class="notice">Panel ini memakai password server-side. Jangan bagikan password admin atau menyimpannya di browser.</div>
+      <form id="loginForm">
+        <div class="field">
+          <label for="adminPassword">Password admin</label>
+          <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="button primary" type="submit">Masuk</button>
+      </form>
+      <div class="message" id="loginMessage" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="adminPanel" hidden>
+      <h1>Ringkasan situs</h1>
+      <p class="intro">Data akun Discord, paket Premium, dan upload global.</p>
+      <div class="notice">Status online menggunakan heartbeat dan dapat terlambat sekitar 90 detik. Total pengunjung adalah jumlah akun Discord unik yang pernah login.</div>
+      <div class="stats">
+        <div class="panel stat"><div class="stat-label">Pengunjung unik</div><div class="stat-value" id="totalVisitors">—</div></div>
+        <div class="panel stat"><div class="stat-label">VIP aktif</div><div class="stat-value" id="totalVip">—</div></div>
+        <div class="panel stat"><div class="stat-label">Upload berhasil</div><div class="stat-value" id="totalUploads">—</div></div>
+      </div>
+      <div class="tools">
+        <form class="panel" id="vipForm">
+          <div class="card-head"><h2>Tambah Premium</h2></div>
+          <p class="card-copy">Masa baru ditambahkan setelah masa Premium aktif yang sedang berjalan.</p>
+          <div class="form-row">
+            <div class="field"><label for="vipDiscordId">Discord ID</label><input id="vipDiscordId" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20" required></div>
+            <div class="field"><label for="vipDuration">Durasi</label><select id="vipDuration"><option value="7">1 minggu</option><option value="30">1 bulan</option><option value="60">2 bulan</option></select></div>
+            <button class="button primary" type="submit">Tambah VIP</button>
+          </div>
+          <div class="message" id="vipMessage" role="status" aria-live="polite"></div>
+        </form>
+        <form class="panel" id="banForm">
+          <div class="card-head"><h2>Blokir akun</h2></div>
+          <p class="card-copy">Akun yang diblokir akan ditolak oleh API uploader setelah login.</p>
+          <div class="ban-row">
+            <div class="field"><label for="banDiscordId">Discord ID</label><input id="banDiscordId" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20" required></div>
+            <div class="field"><label for="banReason">Alasan (opsional)</label><input id="banReason" maxlength="200" placeholder="Aturan komunitas"></div>
+            <button class="button danger" type="submit">Blokir</button>
+          </div>
+          <div class="message" id="banMessage" role="status" aria-live="polite"></div>
+        </form>
+      </div>
+      <div class="lists">
+        <section class="panel list-panel">
+          <div class="list-head"><h2>Sedang online</h2><span class="list-count" id="onlineCount">0</span></div>
+          <div class="list" id="onlineList"></div>
+        </section>
+        <section class="panel list-panel">
+          <div class="list-head"><h2>Premium aktif</h2><span class="list-count" id="vipCount">0</span></div>
+          <div class="list" id="vipList"></div>
+        </section>
+        <section class="panel list-panel">
+          <div class="list-head"><h2>Akun diblokir</h2><span class="list-count" id="banCount">0</span></div>
+          <div class="list" id="banList"></div>
+        </section>
+      </div>
+      <p class="footnote">Daftar menampilkan maksimal 100 akun per kategori. Timer Premium diperbarui setiap detik; masa yang habis otomatis tidak lagi dihitung sebagai Premium aktif.</p>
+    </section>
+  </main>
+  <script type="module" src="/src/admin.js"></script>
+</body>
+</html>

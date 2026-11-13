@@ -262,6 +262,22 @@
     .setup-status { font-size: 12px; font-weight: 650; }
     .setup-caption { margin-top: 4px; color: var(--muted); font-size: 10px; }
     .surface-link { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: var(--silver); cursor: pointer; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+    .membership { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.85fr); gap: 15px; margin-top: 17px; }
+    .membership [hidden] { display: none; }
+    .membership-plan { position: relative; overflow: hidden; padding: 20px; border: 1px solid #515258; border-radius: var(--radius); background: linear-gradient(125deg, #292a2f, #191a1e 67%, #141518); }
+    .membership-plan.vip { border-color: #72747b; background: linear-gradient(125deg, #36373d, #202126 67%, #17181b); }
+    .membership-label { color: #b6b8bf; font-size: 10px; }
+    .membership-title { margin-top: 8px; font-size: 23px; font-weight: 720; letter-spacing: -.04em; }
+    .membership-copy { margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .membership-expiry { margin-top: 12px; color: #d7d8dc; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .membership-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .membership-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+    .membership-stat { display: flex; min-height: 136px; flex-direction: column; justify-content: space-between; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, #1a1b1f, #131417); }
+    .membership-stat-label { color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .membership-stat-value { font-size: clamp(24px, 3vw, 34px); font-weight: 710; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
+    .membership-stat-hint { color: var(--quiet); font-size: 9px; }
+    .quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 14px; }
+    .quick-actions-label { margin-right: 3px; color: var(--muted); font-size: 10px; }
 
     .upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) 285px; align-items: start; gap: 18px; }
     .upload-panel { padding: 21px; }
@@ -401,6 +417,11 @@
     .modal::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(5px); }
     .modal h2 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
     .modal-copy { margin: 9px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .vip-options { display: grid; gap: 8px; }
+    .vip-option { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: #111215; cursor: pointer; text-align: left; }
+    .vip-option:hover { border-color: #777980; background: #24252a; }
+    .vip-option span { color: var(--muted); font-size: 10px; }
+    .vip-option b { font-size: 12px; }
     .review-row { padding: 12px 0; border-top: 1px solid var(--line-soft); }
     .review-label { color: var(--quiet); font-size: 9px; }
     .review-value { overflow-wrap: anywhere; margin-top: 5px; font-size: 11px; font-weight: 650; }
@@ -435,6 +456,12 @@
       .hero-copy p { max-width: 370px; margin: 12px 0 19px; font-size: 12px; }
       .hero-art { position: absolute; right: -15px; bottom: -27px; width: 180px; height: 130px; margin: 0; opacity: .36; transform: rotate(-12deg); }
       .dashboard-lower { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+      .membership { grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+      .membership-stats { gap: 7px; }
+      .membership-stat { min-height: 105px; padding: 12px; }
+      .membership-stat-value { font-size: 25px; }
+      .quick-actions { gap: 7px; }
+      .quick-actions-label { width: 100%; }
       .surface-pad { padding: 18px; }
       .upload-grid { grid-template-columns: 1fr; gap: 12px; }
       .upload-panel { padding: 16px; }
@@ -526,6 +553,41 @@
               <button class="primary" id="heroAction" type="button">Masuk dengan Discord <span>↗</span></button>
             </div>
             <div class="hero-art" id="heroArt" aria-hidden="true"></div>
+          </div>
+          <section class="membership" aria-label="Paket dan statistik">
+            <div class="membership-plan" id="membershipPlan">
+              <div class="membership-label">PAKET AKUN</div>
+              <div class="membership-title" id="membershipTitle">Gratis</div>
+              <div class="membership-copy" id="membershipCopy">Masuk untuk melihat kuota akun.</div>
+              <div class="membership-expiry" id="membershipExpiry" hidden></div>
+              <div class="membership-actions">
+                <button class="primary" id="buyVipButton" type="button">Pilih paket VIP</button>
+                <button class="secondary" id="membershipUploadButton" type="button" data-go="upload">Mulai upload</button>
+              </div>
+            </div>
+            <div class="membership-stats">
+              <div class="membership-stat">
+                <div class="membership-stat-label">Pengunjung Discord unik</div>
+                <div class="membership-stat-value" id="totalVisitors">—</div>
+                <div class="membership-stat-hint">Akun yang pernah masuk</div>
+              </div>
+              <div class="membership-stat">
+                <div class="membership-stat-label">VIP aktif</div>
+                <div class="membership-stat-value" id="totalVip">—</div>
+                <div class="membership-stat-hint">Masa VIP yang belum habis</div>
+              </div>
+              <div class="membership-stat">
+                <div class="membership-stat-label">Upload berhasil</div>
+                <div class="membership-stat-value" id="totalUploads">—</div>
+                <div class="membership-stat-hint">Audio · Decal · Model</div>
+              </div>
+            </div>
+          </section>
+          <div class="quick-actions" aria-label="Aksi cepat">
+            <span class="quick-actions-label">Aksi cepat</span>
+            <button class="secondary" type="button" data-go="upload">Upload asset</button>
+            <button class="secondary" type="button" data-go="setup">Setup Roblox</button>
+            <button class="secondary" id="quickBuyVip" type="button">Beli VIP</button>
           </div>
           <div class="dashboard-lower">
             <section class="surface surface-pad">
@@ -706,6 +768,22 @@
     <div class="review-row" id="reviewPlaybackSpeedRow"><div class="review-label">PlaybackSpeed</div><div class="review-value" id="reviewPlaybackSpeed"></div></div>
     <label class="agreement"><input type="checkbox" id="rightsConfirm"><span id="rightsConfirmText">Saya berhak mengunggah audio ini dan memahami Roblox tetap dapat meninjau atau menolaknya.</span></label>
     <div class="modal-actions"><button class="secondary" id="cancelReview" type="button">Kembali</button><button class="primary" id="confirmUpload" type="button" disabled>Konfirmasi upload</button></div>
+  </dialog>
+  <dialog class="modal" id="vipDialog" aria-labelledby="vipDialogTitle">
+    <h2 id="vipDialogTitle">Pilih paket VIP</h2>
+    <p class="modal-copy">Pilih durasi. WhatsApp akan terbuka dengan pesan dan nominal yang sudah diisi.</p>
+    <div class="vip-options">
+      <button class="vip-option" type="button" data-vip-days="7" data-vip-price="15000">
+        <span><b>1 minggu</b><br>Upload tanpa batas aplikasi</span><b>Rp15.000</b>
+      </button>
+      <button class="vip-option" type="button" data-vip-days="30" data-vip-price="30000">
+        <span><b>1 bulan</b><br>Upload tanpa batas aplikasi</span><b>Rp30.000</b>
+      </button>
+      <button class="vip-option" type="button" data-vip-days="60" data-vip-price="50000">
+        <span><b>2 bulan</b><br>Upload tanpa batas aplikasi</span><b>Rp50.000</b>
+      </button>
+    </div>
+    <div class="modal-actions"><button class="secondary" id="closeVipDialog" type="button">Tutup</button></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

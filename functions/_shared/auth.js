@@ -2,6 +2,7 @@ import { signToken, verifyToken } from "../../supabase/functions/_shared/auth-to
 
 export const DISCORD_SESSION_COOKIE = "mchlern_discord_session";
 export const DISCORD_STATE_COOKIE = "mchlern_discord_oauth_state";
+export const ADMIN_SESSION_COOKIE = "mchlern_admin_session";
 export const DISCORD_ID_PATTERN = /^[0-9]{17,20}$/;
 
 export function hasStrongSecret(value) {
@@ -27,12 +28,25 @@ function cookieHeader(name, value, request, maxAge) {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
+function adminCookieHeader(value, request, maxAge) {
+  const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
+  return `${ADMIN_SESSION_COOKIE}=${value}; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`;
+}
+
 export function appendSessionCookie(headers, token, request) {
   headers.append("Set-Cookie", cookieHeader(DISCORD_SESSION_COOKIE, token, request, 604800));
 }
 
 export function clearSessionCookie(headers, request) {
   headers.append("Set-Cookie", cookieHeader(DISCORD_SESSION_COOKIE, "", request, 0));
+}
+
+export function appendAdminSessionCookie(headers, token, request) {
+  headers.append("Set-Cookie", adminCookieHeader(token, request, 7200));
+}
+
+export function clearAdminSessionCookie(headers, request) {
+  headers.append("Set-Cookie", adminCookieHeader("", request, 0));
 }
 
 export function appendStateCookie(headers, state, request) {
@@ -82,9 +96,40 @@ export async function createEdgeAssertion(session, env) {
     iss: "mchlern-cloudflare-pages",
     aud: "mchlern-supabase-edge",
     sub: session.id,
+    username: session.username,
+    displayName: session.displayName,
+    avatarUrl: session.avatarUrl,
     iat: now,
     exp: now + 60,
   }, env.AUTH_BRIDGE_SECRET);
+}
+
+export async function createAdminEdgeAssertion(env) {
+  if (!hasStrongSecret(env.AUTH_BRIDGE_SECRET)) {
+    throw new Error("Cloudflare auth bridge secret is not configured.");
+  }
+  const now = Math.floor(Date.now() / 1000);
+  return signToken({
+    iss: "mchlern-cloudflare-admin",
+    aud: "mchlern-supabase-admin",
+    sub: "site-admin",
+    iat: now,
+    exp: now + 60,
+  }, env.AUTH_BRIDGE_SECRET);
+}
+
+export async function getAdminSession(request, env) {
+  const token = readCookie(request, ADMIN_SESSION_COOKIE);
+  if (!token || !hasStrongSecret(env.ADMIN_PANEL_PASSWORD)) return false;
+  const payload = await verifyToken(token, env.ADMIN_PANEL_PASSWORD);
+  const now = Math.floor(Date.now() / 1000);
+  return payload?.iss === "mchlern-admin-session"
+    && payload.sub === "site-admin"
+    && Number.isInteger(payload.iat)
+    && Number.isInteger(payload.exp)
+    && payload.iat <= now + 5
+    && payload.exp > now
+    && payload.exp - payload.iat <= 7200;
 }
 
 export function sameOriginError(request) {

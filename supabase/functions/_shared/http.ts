@@ -74,6 +74,9 @@ export function preflightResponse(request: Request): Response {
 
 export interface AuthenticatedUser {
   id: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 export async function authenticate(request: Request): Promise<{ user: AuthenticatedUser }> {
@@ -98,7 +101,57 @@ export async function authenticate(request: Request): Promise<{ user: Authentica
   ) {
     throw new HttpResponseError(401, "Sesi Discord tidak valid. Masuk lagi.");
   }
-  return { user: { id: claims.sub } };
+
+  const { data: ban, error: banError } = await adminClient
+    .from("site_user_bans")
+    .select("discord_user_id")
+    .eq("discord_user_id", claims.sub)
+    .maybeSingle();
+  if (banError) {
+    console.error("Discord ban lookup failed.", banError.code);
+    throw new HttpResponseError(503, "Status akun sementara tidak bisa diverifikasi.");
+  }
+  if (ban) throw new HttpResponseError(403, "Akun Discord ini diblokir dari web.");
+
+  return {
+    user: {
+      id: claims.sub,
+      username: typeof claims.username === "string" ? claims.username : undefined,
+      displayName: typeof claims.displayName === "string" ? claims.displayName : undefined,
+      avatarUrl: typeof claims.avatarUrl === "string" ? claims.avatarUrl : undefined,
+    },
+  };
+}
+
+export interface AdminAssertion {
+  iss: "mchlern-cloudflare-admin";
+  aud: "mchlern-supabase-admin";
+  sub: "site-admin";
+  iat: number;
+  exp: number;
+}
+
+export async function authenticateAdmin(request: Request): Promise<void> {
+  const authorization = request.headers.get("Authorization");
+  const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) throw new HttpResponseError(401, "Login admin diperlukan.");
+
+  const bridgeSecret = Deno.env.get("AUTH_BRIDGE_SECRET");
+  if (!bridgeSecret) throw new Error("Cloudflare auth bridge secret is not configured.");
+  const claims = await verifyToken(token, bridgeSecret) as Partial<AdminAssertion> | null;
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    claims?.iss !== "mchlern-cloudflare-admin"
+    || claims.aud !== "mchlern-supabase-admin"
+    || claims.sub !== "site-admin"
+    || !Number.isInteger(claims.iat)
+    || !Number.isInteger(claims.exp)
+    || claims.iat! > now + 5
+    || claims.exp! <= now
+    || claims.exp! - claims.iat! > 60
+  ) {
+    throw new HttpResponseError(401, "Sesi admin tidak valid. Login lagi.");
+  }
 }
 
 export class HttpResponseError extends Error {
