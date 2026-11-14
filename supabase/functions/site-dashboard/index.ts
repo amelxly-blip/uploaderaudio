@@ -6,6 +6,7 @@ import {
   jsonResponse,
   preflightResponse,
 } from "../_shared/http.ts";
+import { getNextQuotaResetAt } from "../_shared/quota-window.js";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -33,7 +34,22 @@ Deno.serve(async (request: Request) => {
       console.error("Site dashboard query failed.", error.code);
       throw new Error("Site dashboard query failed.");
     }
-    return jsonResponse(request, data as Record<string, unknown>);
+    const { data: quota, error: quotaError } = await adminClient
+      .from("discord_audio_upload_rate_limits")
+      .select("upload_timestamps")
+      .eq("discord_user_id", user.id)
+      .maybeSingle();
+    if (quotaError) {
+      console.error("Site quota reset lookup failed.", quotaError.code);
+      throw new Error("Site quota reset lookup failed.");
+    }
+    const dashboard = data as Record<string, unknown>;
+    return jsonResponse(request, {
+      ...dashboard,
+      nextQuotaResetAt: dashboard.isVip === true
+        ? null
+        : getNextQuotaResetAt(quota?.upload_timestamps),
+    });
   } catch (error) {
     return errorResponse(request, error);
   }

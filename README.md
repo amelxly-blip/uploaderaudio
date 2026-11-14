@@ -37,6 +37,12 @@ minutes), PNG/JPG/BMP/TGA decals (under 8000 × 8000 pixels), and Roblox Studio
 `.rbxm`/`.rbxmx` models (up to 20 MB). Audio playback-speed compensation is
 processed in the browser and uploaded as MP3 when a speed other than 1.00× is
 selected.
+The upload queue accepts up to 10 files of the selected type and processes them
+one at a time; audio and supported image files can be previewed before upload.
+Upload history can be searched and filtered by asset type, and completed IDs
+can be copied. The free quota panel shows the next rolling 24-hour reset time.
+The VIP support WhatsApp number is configured in `VIP_WHATSAPP_NUMBER` in
+`src/main.js`.
 
 ## Cloudflare Pages and Discord
 

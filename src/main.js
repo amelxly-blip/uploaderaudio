@@ -1,9 +1,13 @@
 import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
+import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
+import { getNextQuotaResetAt } from "../supabase/functions/_shared/quota-window.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const tabs = ["home", "upload", "setup", "history"];
+const VIP_WHATSAPP_NUMBER = "6282174905591";
+const MAX_UPLOAD_QUEUE_SIZE = 10;
 const assetTypes = {
   Audio: {
     title: "Upload audio",
@@ -49,14 +53,46 @@ let me = {
   creatorLabel: "",
   robloxProfile: null,
 };
-let selectedFile = null;
+let uploadQueue = [];
+let nextQueueItemId = 1;
 let selectedAssetType = "Audio";
 let uploadInProgress = false;
-let previewUrl = null;
 let toastTimer;
 let history = [];
 let dashboard = null;
 let publicStats = null;
+
+function createQueueItem(file, assetType) {
+  const extension = file.name.split(".").pop().toLowerCase();
+  const previewUrl = assetType === "Audio" || assetType === "Decal"
+    ? URL.createObjectURL(file)
+    : null;
+  return {
+    id: nextQueueItemId++,
+    file,
+    assetType,
+    name: file.name.replace(/\.[^.]+$/, "").slice(0, 50),
+    playbackSpeed: Number($("#playbackSpeed").value),
+    previewUrl,
+    status: "queued",
+    error: "",
+    assetId: "",
+  };
+}
+
+function releaseQueueItem(item) {
+  if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+}
+
+function queueItemStatus(item) {
+  return ({
+    queued: "Menunggu",
+    uploading: "Mengunggah",
+    processing: "Diproses Roblox",
+    completed: "Selesai",
+    failed: "Gagal",
+  })[item.status] || "Menunggu";
+}
 
 function showToast(message) {
   const toast = $("#toast");
@@ -145,6 +181,14 @@ function formatCount(value) {
   return Number.isFinite(count) && count >= 0 ? Math.floor(count).toLocaleString("id-ID") : "—";
 }
 
+function formatCountdown(remainingMs) {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}j ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}d`;
+}
+
 function renderMembership() {
   const signedIn = me.authenticated && !!me.discordUser;
   const statistics = dashboard || publicStats;
@@ -163,6 +207,15 @@ function renderMembership() {
   const plan = $("#membershipPlan");
   plan.classList.toggle("vip", vipActive);
   $("#membershipTitle").textContent = vipActive ? "Premium" : "Gratis";
+  const nextQuotaReset = dashboard?.nextQuotaResetAt
+    ? Date.parse(dashboard.nextQuotaResetAt)
+    : NaN;
+  const resetHint = $("#quotaResetHint");
+  const quotaResetText = Number.isFinite(nextQuotaReset) && nextQuotaReset > Date.now()
+    ? `1 upload pulih dalam ${formatCountdown(nextQuotaReset - Date.now())}`
+    : "";
+  resetHint.hidden = !signedIn || vipActive || !quotaResetText;
+  resetHint.textContent = quotaResetText;
   $("#membershipCopy").textContent = !signedIn
     ? "Masuk dengan Discord untuk melihat kuota upload akun."
     : vipActive
@@ -180,6 +233,22 @@ function renderMembership() {
   }
   $("#buyVipButton").hidden = !signedIn;
   $("#membershipUploadButton").hidden = !signedIn;
+  const quotaTitle = $("#uploadQuotaTitle");
+  const quotaValue = $("#uploadQuotaValue");
+  const quotaReset = $("#uploadQuotaReset");
+  if (!signedIn) {
+    quotaTitle.textContent = "Kuota upload";
+    quotaValue.textContent = "Masuk untuk melihat";
+    quotaReset.textContent = "Batas gratis: 5 percobaan dalam 24 jam.";
+  } else if (vipActive) {
+    quotaTitle.textContent = "Paket VIP";
+    quotaValue.textContent = "UNLIMITED";
+    quotaReset.textContent = "VIP aktif · tidak ada batas upload aplikasi.";
+  } else {
+    quotaTitle.textContent = "Sisa kuota gratis";
+    quotaValue.textContent = `${formatCount(dashboard?.quotaRemaining)}/5`;
+    quotaReset.textContent = quotaResetText || "Kuota dihitung dalam jendela 24 jam berjalan.";
+  }
   $("#totalVisitors").textContent = formatCount(statistics?.totalVisitors);
   $("#totalVip").textContent = formatCount(statistics?.totalVip);
   $("#totalUploads").textContent = formatCount(statistics?.totalUploads);
@@ -194,8 +263,6 @@ function updatePlaybackSpeedHelp() {
 function setAssetType(assetType) {
   if (uploadInProgress || !Object.prototype.hasOwnProperty.call(assetTypes, assetType)) return;
   selectedAssetType = assetType;
-  resetFile();
-  $("#audioName").value = "";
   const details = assetTypes[assetType];
   $$("[data-asset-type]").forEach((button) => {
     const active = button.dataset.assetType === assetType;
@@ -207,14 +274,10 @@ function setAssetType(assetType) {
   $("#uploadPanelSubtitle").textContent = details.subtitle;
   $("#dropFormats").textContent = details.formats;
   $("#fileInput").accept = details.accept;
-  $("#fileIcon").textContent = details.icon;
   $("#audioSpeedControl").hidden = assetType !== "Audio";
-  $("#audioPreview").hidden = true;
-  $("#audioNameLabel").textContent = details.name;
-  $("#audioName").placeholder = details.placeholder;
   $("#reviewDialogTitle").textContent = `Periksa sebelum upload ${assetType.toLowerCase()}`;
   $("#reviewDialogCopy").textContent =
-    `Ini akan membuat asset ${assetType.toLowerCase()} baru di Roblox dan menggunakan kuota creator.`;
+    "Setiap file akan membuat asset baru di Roblox dan menggunakan satu percobaan kuota.";
   $("#rightsConfirmText").textContent = details.rights;
   $("#uploadAsideSubtitle").textContent =
     `${assetType} baru dibuat di akun atau grup yang diizinkan API key. Kuota aplikasi 5 upload per 24 jam dipakai bersama.`;
@@ -464,6 +527,7 @@ async function loadDashboard() {
     || !Number.isFinite(Number(data.totalVip))
     || !Number.isFinite(Number(data.totalUploads))
     || typeof data.isVip !== "boolean"
+    || (data.nextQuotaResetAt != null && typeof data.nextQuotaResetAt !== "string")
   ) {
     throw new Error("Ringkasan dashboard dari server tidak valid.");
   }
@@ -518,6 +582,7 @@ async function clearBlockedSession() {
   me.creatorLabel = "";
   me.robloxProfile = null;
   dashboard = null;
+  clearQueue();
   $("#robloxCredentialsForm").reset();
   history = [];
   renderHistory();
@@ -547,6 +612,7 @@ async function refreshSession(showErrors = false) {
     me.creatorId = "";
     me.creatorLabel = "";
     me.robloxProfile = null;
+    clearQueue();
     $("#robloxCredentialsForm").reset();
     $("#credentialsStatus").className = "status-message";
     $("#credentialsStatus").textContent = "";
@@ -567,6 +633,7 @@ async function refreshSession(showErrors = false) {
     me.creatorType = "user";
     me.creatorId = "";
     me.creatorLabel = "";
+    clearQueue();
     $("#robloxCredentialsForm").reset();
     $("#credentialsStatus").className = "status-message";
     $("#credentialsStatus").textContent = "";
@@ -646,6 +713,7 @@ async function logout() {
     robloxProfile: null,
   };
   dashboard = null;
+  clearQueue();
   $("#robloxCredentialsForm").reset();
   $("#credentialsStatus").className = "status-message";
   $("#credentialsStatus").textContent = "";
@@ -673,11 +741,10 @@ function setUploadBusy(isBusy) {
   uploadInProgress = isBusy;
   document.body.classList.toggle("upload-busy", isBusy);
   $("#fileInput").disabled = isBusy;
-  $("#removeFile").disabled = isBusy;
-  $("#audioName").disabled = isBusy;
+  $("#clearQueue").disabled = isBusy;
   $("#playbackSpeed").disabled = isBusy;
   $$("[data-asset-type]").forEach((button) => { button.disabled = isBusy; });
-  $("#reviewUpload").disabled = isBusy || !me.authenticated || !me.robloxConfigured;
+  renderUploadQueue();
 }
 
 function clearUploadStatus() {
@@ -686,45 +753,95 @@ function clearUploadStatus() {
   $("#uploadProgress").hidden = true;
 }
 
-function resetFile(preserveStatus = false) {
-  selectedFile = null;
+function clearQueue() {
+  uploadQueue.forEach(releaseQueueItem);
+  uploadQueue = [];
   $("#fileInput").value = "";
-  $("#fileCard").classList.remove("visible");
-  $("#audioPreview").hidden = true;
-  $("#audioPreview").removeAttribute("src");
-  if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = null;
-  if (!preserveStatus) clearUploadStatus();
+  renderUploadQueue();
+  clearUploadStatus();
 }
 
-function handleFile(file) {
-  if (!file || uploadInProgress) return;
-  resetFile();
-  const extension = file.name.split(".").pop().toLowerCase();
-  const validExtensions = {
-    Audio: ["mp3", "ogg", "wav", "flac"],
-    Decal: ["png", "jpg", "jpeg", "bmp", "tga"],
-    Model: ["rbxm", "rbxmx"],
-  }[selectedAssetType];
-  if (!validExtensions.includes(extension)) {
-    showUploadStatus("error", `Format file tidak sesuai. Pilih: ${assetTypes[selectedAssetType].formats}.`);
-    return;
+function renderUploadQueue() {
+  const panel = $("#queuePanel");
+  const list = $("#uploadQueue");
+  panel.hidden = uploadQueue.length === 0;
+  const waitingCount = uploadQueue.filter((item) => item.status === "queued").length;
+  $("#queueCount").textContent =
+    `${uploadQueue.length} file · ${waitingCount} menunggu`;
+  const previewFor = (item) => {
+    if (item.assetType === "Audio" && item.previewUrl) {
+      return `<div class="queue-preview"><audio controls preload="metadata" src="${item.previewUrl}"></audio></div>`;
+    }
+    if (item.assetType === "Decal" && item.previewUrl && !item.file.name.toLowerCase().endsWith(".tga")) {
+      return `<div class="queue-preview"><img src="${item.previewUrl}" alt="Pratinjau ${escapeHtml(item.file.name)}"></div>`;
+    }
+    if (item.assetType === "Decal") {
+      return '<div class="queue-preview"><div class="queue-model-preview">Pratinjau browser tidak tersedia untuk file TGA. Nama dan ukuran file tetap bisa diperiksa.</div></div>';
+    }
+    if (item.assetType === "Model") {
+      return '<div class="queue-preview"><div class="queue-model-preview">File model Roblox siap diunggah. Pratinjau 3D tersedia di Roblox Studio.</div></div>';
+    }
+    return "";
+  };
+  list.innerHTML = uploadQueue.map((item) => {
+    const details = assetTypes[item.assetType];
+    const removeDisabled = uploadInProgress;
+    const retry = item.status === "failed"
+      ? `<button class="queue-clear" type="button" data-retry-queue="${item.id}">Coba lagi</button>`
+      : "";
+    const result = item.assetId
+      ? `<span class="queue-item-id">Asset ID ${escapeHtml(item.assetId)}</span>`
+      : `<span>${queueItemStatus(item)}</span>`;
+    return `<article class="queue-item" data-queue-item="${item.id}">
+      <div class="queue-item-head">
+        <div class="queue-item-icon">${details.icon}</div>
+        <div class="queue-item-copy"><div class="queue-item-file">${escapeHtml(item.file.name)}</div>
+          <div class="queue-item-meta">${item.assetType} · ${escapeHtml(formatSize(item.file.size))}</div>
+        </div>
+        <button class="queue-item-remove" type="button" data-remove-queue="${item.id}" aria-label="Hapus ${escapeHtml(item.file.name)}" ${removeDisabled ? "disabled" : ""}>×</button>
+      </div>
+      <input class="queue-item-name" type="text" maxlength="50" value="${escapeHtml(item.name)}" aria-label="Nama asset untuk ${escapeHtml(item.file.name)}" data-queue-name="${item.id}" ${uploadInProgress ? "disabled" : ""}>
+      ${previewFor(item)}
+      <div class="queue-item-footer">${result}${retry}${item.error ? `<div class="queue-item-error">${escapeHtml(item.error)}</div>` : ""}</div>
+    </article>`;
+  }).join("");
+  $("#clearQueue").disabled = uploadInProgress || uploadQueue.length === 0;
+  $("#reviewUpload").disabled = uploadInProgress
+    || !me.authenticated
+    || !me.robloxConfigured
+    || !uploadQueue.some((item) => item.status === "queued");
+}
+
+function handleFiles(files) {
+  if (uploadInProgress || files.length === 0) return;
+  let added = 0;
+  const errors = [];
+  for (const file of files) {
+    if (uploadQueue.length >= MAX_UPLOAD_QUEUE_SIZE) {
+      errors.push(`Antrean maksimal ${MAX_UPLOAD_QUEUE_SIZE} file.`);
+      break;
+    }
+    const extension = file.name.split(".").pop().toLowerCase();
+    const validExtensions = {
+      Audio: ["mp3", "ogg", "wav", "flac"],
+      Decal: ["png", "jpg", "jpeg", "bmp", "tga"],
+      Model: ["rbxm", "rbxmx"],
+    }[selectedAssetType];
+    if (!validExtensions.includes(extension)) {
+      errors.push(`${file.name}: format tidak sesuai untuk ${selectedAssetType}.`);
+      continue;
+    }
+    if (file.size === 0 || file.size > 20 * 1024 * 1024) {
+      errors.push(`${file.name}: ukuran file harus lebih dari 0 dan maksimal 20 MB.`);
+      continue;
+    }
+    uploadQueue.push(createQueueItem(file, selectedAssetType));
+    added += 1;
   }
-  if (file.size > 20 * 1024 * 1024) {
-    showUploadStatus("error", "Ukuran file lebih dari 20 MB. Pilih file yang lebih kecil.");
-    return;
-  }
-  selectedFile = file;
-  $("#fileName").textContent = file.name;
-  $("#fileMeta").textContent = `${formatSize(file.size)} · ${extension.toUpperCase()}`;
-  $("#fileCard").classList.add("visible");
-  $("#audioName").value = $("#audioName").value.trim() || file.name.replace(/\.[^.]+$/, "").slice(0, 50);
-  if (selectedAssetType === "Audio") {
-    previewUrl = URL.createObjectURL(file);
-    $("#audioPreview").src = previewUrl;
-    $("#audioPreview").hidden = false;
-  }
-  clearUploadStatus();
+  $("#fileInput").value = "";
+  renderUploadQueue();
+  if (added > 0) clearUploadStatus();
+  if (errors.length) showUploadStatus("error", errors.join(" "));
 }
 
 function openReview() {
@@ -733,21 +850,36 @@ function openReview() {
     showUploadStatus("error", "Konfigurasi Roblox belum lengkap. Atur Creator ID dan API key di Setup Roblox.");
     return;
   }
-  const name = $("#audioName").value.trim();
-  if (!selectedFile) { showUploadStatus("error", "Pilih file lebih dulu."); return; }
-  if (!name || name.length > 50) {
-    showUploadStatus("error", "Nama asset wajib diisi (maksimal 50 karakter).");
-    $("#audioName").focus();
+  const pending = uploadQueue.filter((item) => item.status === "queued");
+  if (!pending.length) { showUploadStatus("error", "Tambahkan file ke antrean lebih dulu."); return; }
+  for (const item of pending) {
+    const nameInput = $(`[data-queue-name="${item.id}"]`);
+    const name = nameInput.value.trim();
+    if (!name || name.length > 50) {
+      showUploadStatus("error", `Isi nama asset (maksimal 50 karakter) untuk ${item.file.name}.`);
+      nameInput.focus();
+      return;
+    }
+    item.name = name;
+  }
+  if (!uploadQueue.some((item) => item.status === "queued")) {
+    showUploadStatus("error", "Tidak ada file yang menunggu upload.");
     return;
   }
-  $("#reviewFile").textContent = `${selectedFile.name} · ${formatSize(selectedFile.size)}`;
-  $("#reviewName").textContent = name;
   $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
-  $("#reviewPlaybackSpeedRow").hidden = selectedAssetType !== "Audio";
-  if (selectedAssetType === "Audio") {
-    $("#reviewPlaybackSpeed").textContent =
-      `${Number($("#playbackSpeed").value).toFixed(2)}× di Roblox · audio dipercepat ${getCompensationSpeed($("#playbackSpeed").value).toFixed(2)}× saat diproses`;
-  }
+  $("#rightsConfirmText").textContent =
+    "Saya memiliki hak untuk mengunggah semua file di antrean dan memahami Roblox dapat meninjau atau menolaknya.";
+  $("#reviewQueueList").innerHTML = pending.map((item) =>
+    `<div class="review-queue-item"><strong>${escapeHtml(item.name)}</strong><span>${item.assetType} · ${escapeHtml(formatSize(item.file.size))}</span></div>`
+  ).join("");
+  $("#reviewCount").textContent = `${pending.length} file akan diunggah satu per satu.`;
+  const audioSpeeds = [...new Set(pending
+    .filter((item) => item.assetType === "Audio")
+    .map((item) => item.playbackSpeed))];
+  $("#reviewPlaybackSpeedRow").hidden = audioSpeeds.length === 0;
+  $("#reviewPlaybackSpeed").textContent = audioSpeeds.map((speed) =>
+    `${speed.toFixed(2)}× di Roblox (audio ${getCompensationSpeed(speed).toFixed(2)}×)`
+  ).join(" · ");
   $("#rightsConfirm").checked = false;
   $("#confirmUpload").disabled = true;
   $("#confirmDialog").showModal();
@@ -758,54 +890,79 @@ async function pollOperation(uploadId, assetType) {
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const data = await callFunction("roblox-operation", { body: { uploadId } });
     if (data.status === "completed") {
-      showUploadStatus("success", `Upload ${assetType.toLowerCase()} selesai. Asset ID: ${data.assetId}`);
       await loadHistory();
-      return;
+      return { status: "completed", assetId: String(data.assetId || "") };
     }
     if (data.status === "failed") throw new Error(data.error || "Roblox menolak upload.");
   }
-  showUploadStatus("pending", `Roblox masih memproses ${assetType.toLowerCase()}. Cek riwayat sebentar lagi.`);
   await loadHistory();
+  return { status: "processing", assetId: "" };
 }
 
 async function submitUpload() {
   $("#confirmDialog").close();
-  if (!selectedFile) return;
-  const file = selectedFile;
-  const name = $("#audioName").value.trim();
+  const pending = uploadQueue.filter((item) => item.status === "queued");
+  if (!pending.length) return;
   setUploadBusy(true);
   $("#uploadProgress").hidden = false;
-  const assetType = selectedAssetType;
-  const playbackSpeed = Number($("#playbackSpeed").value);
-  showUploadStatus("pending", assetType === "Audio" && playbackSpeed !== 1
-    ? "Memproses speed audio di browser…"
-    : `Mengirim ${assetType.toLowerCase()} ke Roblox Open Cloud…`);
+  let completedCount = 0;
+  let failedCount = 0;
   try {
-    const uploadFile = assetType === "Audio"
-      ? await processAudioForPlaybackSpeed(file, playbackSpeed)
-      : file;
-    const data = await callFunction("roblox-upload", {
-      body: uploadFile,
-      headers: {
-        "x-audio-name": encodeURIComponent(name),
-        "x-audio-filename": encodeURIComponent(uploadFile.name),
-        "x-asset-type": assetType,
-      },
-    });
-    if (data.status !== "processing" || typeof data.uploadId !== "string") {
-      throw new Error("Layanan uploader tidak mengembalikan status upload yang valid.");
+    for (const [index, item] of pending.entries()) {
+      item.status = "uploading";
+      item.error = "";
+      renderUploadQueue();
+      showUploadStatus("pending", `Mengunggah ${index + 1}/${pending.length}: ${item.name}`);
+      $("#uploadProgress").hidden = false;
+      try {
+        const uploadFile = item.assetType === "Audio"
+          ? await processAudioForPlaybackSpeed(item.file, item.playbackSpeed)
+          : item.file;
+        const data = await callFunction("roblox-upload", {
+          body: uploadFile,
+          headers: {
+            "x-audio-name": encodeURIComponent(item.name),
+            "x-audio-filename": encodeURIComponent(uploadFile.name),
+            "x-asset-type": item.assetType,
+          },
+        });
+        if (data.status !== "processing" || typeof data.uploadId !== "string") {
+          throw new Error("Layanan uploader tidak mengembalikan status upload yang valid.");
+        }
+        const result = await pollOperation(data.uploadId, item.assetType);
+        item.status = result.status;
+        item.assetId = result.assetId;
+        if (result.status === "completed") {
+          completedCount += 1;
+        } else {
+          item.error = "Roblox masih memproses. Periksa riwayat untuk status terbaru.";
+        }
+      } catch (error) {
+        item.status = "failed";
+        item.error = error.message || "Upload gagal.";
+        failedCount += 1;
+        if (error.status === 429) {
+          renderUploadQueue();
+          showUploadStatus("error", "Kuota 24 jam tercapai. File berikutnya tetap menunggu; coba lagi setelah kuota pulih.");
+          break;
+        }
+      } finally {
+        renderUploadQueue();
+        await loadHistory();
+      }
     }
-    await loadHistory();
-    showUploadStatus("pending", `Roblox sedang memproses ${assetType.toLowerCase()}…`);
-    await pollOperation(data.uploadId, assetType);
-    resetFile(true);
-    $("#audioName").value = "";
-  } catch (error) {
-    showUploadStatus("error", error.message);
-    await loadHistory();
+    const waitingCount = uploadQueue.filter((item) => item.status === "queued").length;
+    if (waitingCount) {
+      showUploadStatus("pending", `${completedCount} selesai, ${failedCount} gagal. ${waitingCount} file masih menunggu.`);
+    } else if (failedCount) {
+      showUploadStatus("error", `${completedCount} selesai, ${failedCount} gagal. Periksa detail antrean atau coba lagi.`);
+    } else {
+      showUploadStatus("success", `${completedCount} upload selesai.`);
+    }
   } finally {
     $("#uploadProgress").hidden = true;
     setUploadBusy(false);
+    await loadHistory();
     if (me.authenticated) {
       try {
         await loadDashboard();
@@ -815,25 +972,50 @@ async function submitUpload() {
       }
     }
   }
+  renderUploadQueue();
 }
 
 function renderHistory() {
   const target = $("#historyContainer");
-  $("#historyCount").textContent = `${history.length} asset`;
+  const visibleHistory = filterUploadHistory(history, {
+    query: $("#historySearch").value,
+    assetType: $("#historyTypeFilter").value,
+  });
+  $("#historyCount").textContent = visibleHistory.length === history.length
+    ? `${history.length} asset`
+    : `${visibleHistory.length} dari ${history.length} asset`;
   if (!history.length) {
     target.innerHTML = '<div class="history-empty"><div class="track-icon">♫</div><p>Belum ada upload. Asset ID akan muncul setelah Roblox menyelesaikan operasi.</p></div>';
     return;
   }
-  const rows = history.map((item) => {
+  if (!visibleHistory.length) {
+    target.innerHTML = '<div class="history-no-results">Tidak ada upload yang cocok dengan pencarian atau filter ini.</div>';
+    return;
+  }
+  const cards = visibleHistory.map((item) => {
     const label = item.status === "completed" ? "Selesai" : item.status === "processing" ? "Diproses" : "Gagal";
     const statusClass = item.status === "completed" ? "success" : item.status === "processing" ? "pending" : "error";
     const size = Number(item.file_size) || 0;
     const date = item.created_at ? new Date(item.created_at).toLocaleString("id-ID") : "—";
-    const idCell = item.asset_id ? `<span class="tag">${escapeHtml(item.asset_id)}</span>` : "—";
     const type = ["Audio", "Decal", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
-    return `<tr><td class="name-cell">${escapeHtml(item.display_name)}</td><td>${type}</td><td>${escapeHtml(formatSize(size))}</td><td>${escapeHtml(date)}</td><td>${idCell}</td><td><span class="history-badge ${statusClass}">${label}</span></td></tr>`;
+    const icon = type === "Audio" ? "♫" : type === "Decal" ? "▧" : "⬡";
+    const assetId = item.asset_id ? String(item.asset_id) : "";
+    const assetIdMarkup = assetId
+      ? `<span class="history-asset-id">ID ${escapeHtml(assetId)}</span><button class="copy-id-button" type="button" data-copy-asset-id="${escapeHtml(assetId)}">Salin ID</button>`
+      : '<span class="history-asset-id">Asset ID belum tersedia</span>';
+    return `<article class="history-card">
+      <div class="history-card-head">
+        <div class="track-icon">${icon}</div>
+        <div class="history-card-copy">
+          <div class="history-card-name">${escapeHtml(item.display_name)}</div>
+          <div class="history-card-meta">${type} · ${escapeHtml(formatSize(size))}<br>${escapeHtml(date)}</div>
+        </div>
+        <span class="history-badge ${statusClass}">${label}</span>
+      </div>
+      <div class="history-card-detail">${assetIdMarkup}</div>
+    </article>`;
   }).join("");
-  target.innerHTML = `<div class="table-wrap"><table class="history-table"><thead><tr><th>Nama asset</th><th>Jenis</th><th>Ukuran</th><th>Waktu</th><th>Asset ID</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  target.innerHTML = `<div class="history-grid">${cards}</div>`;
 }
 
 function renderRecent() {
@@ -862,7 +1044,14 @@ function buildWaveform() {
 $$("[data-tab]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.tab)));
 $$("[data-go]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.go)));
 $$("[data-asset-type]").forEach((button) => button.addEventListener("click", () => setAssetType(button.dataset.assetType)));
-$("#authButton").addEventListener("click", () => me.authenticated ? logout() : login());
+$("#authButton").addEventListener("click", () => {
+  if (uploadInProgress) {
+    showToast("Tunggu antrean upload selesai sebelum keluar.");
+    return;
+  }
+  if (me.authenticated) void logout();
+  else void login();
+});
 function openVipDialog() {
   if (!me.authenticated || !me.discordUser) {
     showToast("Masuk dengan Discord dulu untuk membeli VIP.");
@@ -886,19 +1075,45 @@ $$("[data-vip-days]").forEach((button) => {
       `Discord: ${me.discordUser.displayName} (@${me.discordUser.username})`,
       `Discord ID: ${me.discordUser.id}.`,
     ].join("\n");
-    const url = `https://wa.me/6285860490674?text=${encodeURIComponent(message)}`;
+    const url = `https://wa.me/${VIP_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
     $("#vipDialog").close();
     window.open(url, "_blank", "noopener,noreferrer");
   });
 });
-$("#fileInput").addEventListener("change", (event) => handleFile(event.target.files[0]));
-$("#removeFile").addEventListener("click", resetFile);
+$("#fileInput").addEventListener("change", (event) => handleFiles(Array.from(event.target.files || [])));
+$("#clearQueue").addEventListener("click", clearQueue);
+$("#uploadQueue").addEventListener("input", (event) => {
+  const input = event.target.closest("[data-queue-name]");
+  if (!input) return;
+  const item = uploadQueue.find((entry) => entry.id === Number(input.dataset.queueName));
+  if (item) item.name = input.value;
+});
+$("#uploadQueue").addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-queue]");
+  if (removeButton && !uploadInProgress) {
+    const itemId = Number(removeButton.dataset.removeQueue);
+    const item = uploadQueue.find((entry) => entry.id === itemId);
+    if (item) releaseQueueItem(item);
+    uploadQueue = uploadQueue.filter((entry) => entry.id !== itemId);
+    renderUploadQueue();
+    return;
+  }
+  const retryButton = event.target.closest("[data-retry-queue]");
+  if (retryButton && !uploadInProgress) {
+    const item = uploadQueue.find((entry) => entry.id === Number(retryButton.dataset.retryQueue));
+    if (item?.status === "failed") {
+      item.status = "queued";
+      item.error = "";
+      renderUploadQueue();
+    }
+  }
+});
 $("#dropzone").addEventListener("dragover", (event) => { event.preventDefault(); $("#dropzone").classList.add("dragging"); });
 $("#dropzone").addEventListener("dragleave", () => $("#dropzone").classList.remove("dragging"));
 $("#dropzone").addEventListener("drop", (event) => {
   event.preventDefault();
   $("#dropzone").classList.remove("dragging");
-  handleFile(event.dataTransfer.files[0]);
+  handleFiles(Array.from(event.dataTransfer.files || []));
 });
 $("#reviewUpload").addEventListener("click", openReview);
 $("#robloxCredentialsForm").addEventListener("submit", saveRobloxCredentials);
@@ -907,9 +1122,23 @@ $("#playbackSpeed").addEventListener("change", updatePlaybackSpeedHelp);
 $("#cancelReview").addEventListener("click", () => $("#confirmDialog").close());
 $("#rightsConfirm").addEventListener("change", (event) => { $("#confirmUpload").disabled = !event.target.checked; });
 $("#confirmUpload").addEventListener("click", submitUpload);
+$("#historySearch").addEventListener("input", renderHistory);
+$("#historyTypeFilter").addEventListener("change", renderHistory);
+$("#historyContainer").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy-asset-id]");
+  if (!button) return;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copyAssetId);
+    showToast("Asset ID disalin.");
+  } catch (error) {
+    console.error("Could not copy Roblox asset ID.", error);
+    showToast("Asset ID tidak bisa disalin. Salin teks ID secara manual.");
+  }
+});
 buildWaveform();
 updatePlaybackSpeedHelp();
 setAssetType("Audio");
+renderUploadQueue();
 updateIdentity();
 void loadSession();
 setInterval(() => {

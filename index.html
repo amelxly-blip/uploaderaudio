@@ -274,6 +274,7 @@
     .membership-label { color: #b6b8bf; font-size: 10px; }
     .membership-title { margin-top: 8px; font-size: 23px; font-weight: 720; letter-spacing: -.04em; }
     .membership-copy { margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .membership-reset { margin-top: 8px; color: #c4c6cc; font-size: 10px; font-variant-numeric: tabular-nums; }
     .membership-expiry { margin-top: 12px; color: #d7d8dc; font-size: 11px; font-variant-numeric: tabular-nums; }
     .membership-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
     .membership-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
@@ -408,6 +409,51 @@
     .history-empty { padding: 58px 15px; color: var(--muted); text-align: center; }
     .history-empty .track-icon { margin: 0 auto 12px; }
     .history-empty p { margin: 0; font-size: 11px; }
+    .history-controls { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 10px; margin: 16px 0; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: #111215; }
+    .history-controls input, .history-controls select { width: 100%; height: 39px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: #0e0f11; color: var(--text); font-size: 11px; }
+    .history-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .history-card { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(145deg, #1a1b1f, #131417); }
+    .history-card-head { display: flex; align-items: flex-start; gap: 10px; }
+    .history-card .track-icon { width: 39px; height: 39px; }
+    .history-card-copy { min-width: 0; flex: 1; }
+    .history-card-name { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+    .history-card-meta { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .history-card-detail { display: flex; align-items: center; justify-content: space-between; gap: 9px; margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
+    .history-asset-id { min-width: 0; overflow-wrap: anywhere; color: #c6c8ce; font-size: 10px; font-variant-numeric: tabular-nums; }
+    .copy-id-button { min-height: 31px; flex: 0 0 auto; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #222327; color: var(--text); cursor: pointer; font-size: 10px; }
+    .copy-id-button:disabled { cursor: not-allowed; opacity: .45; }
+    .history-no-results { padding: 32px 16px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 11px; text-align: center; }
+    .quota-panel { margin-bottom: 15px; padding: 14px; border: 1px solid #515258; border-radius: 12px; background: linear-gradient(135deg, #24252a, #141518); }
+    .quota-panel-label { color: var(--muted); font-size: 10px; }
+    .quota-panel-value { margin-top: 6px; font-size: 17px; font-weight: 740; font-variant-numeric: tabular-nums; }
+    .quota-panel-reset { margin-top: 5px; color: #bfc1c7; font-size: 10px; line-height: 1.5; }
+    .queue-panel { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg, #18191d, #111215); }
+    .queue-panel[hidden] { display: none; }
+    .queue-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+    .queue-title { font-size: 11px; font-weight: 700; }
+    .queue-count { color: var(--muted); font-size: 10px; }
+    .queue-list { display: grid; gap: 9px; }
+    .queue-item { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: #101114; }
+    .queue-item-head { display: flex; align-items: flex-start; gap: 9px; }
+    .queue-item-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: #24252a; }
+    .queue-item-copy { min-width: 0; flex: 1; }
+    .queue-item-file { overflow: hidden; color: var(--text); font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .queue-item-meta { margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .queue-item-remove { width: 28px; height: 28px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+    .queue-item-name { width: 100%; height: 36px; margin-top: 10px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: #0c0d0f; color: var(--text); font-size: 10px; }
+    .queue-preview { margin-top: 9px; }
+    .queue-preview audio { width: 100%; height: 34px; }
+    .queue-preview img { display: block; width: min(100%, 220px); max-height: 150px; margin: 0 auto; border: 1px solid var(--line); border-radius: 9px; background: #08090a; object-fit: contain; }
+    .queue-model-preview { padding: 10px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .queue-item-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; color: var(--muted); font-size: 9px; }
+    .queue-item-error { width: 100%; color: #e7aaaa; line-height: 1.5; }
+    .queue-item-id { overflow-wrap: anywhere; color: #c6c8ce; }
+    .queue-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .queue-clear { min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-size: 9px; }
+    .review-queue-list { display: grid; max-height: 220px; gap: 7px; overflow-y: auto; }
+    .review-queue-item { display: flex; justify-content: space-between; gap: 10px; padding: 9px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--muted); font-size: 10px; }
+    .review-queue-item strong { overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; }
+    .review-queue-item span { flex: 0 0 auto; }
 
     .notice { margin-top: 16px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); font-size: 10px; line-height: 1.55; }
     .modal {
@@ -480,6 +526,8 @@
       .credential-grid { grid-template-columns: 1fr; gap: 0; }
       .credential-actions { align-items: stretch; flex-direction: column; }
       .history-table { min-width: 550px; }
+      .history-controls { grid-template-columns: 1fr; }
+      .history-grid { grid-template-columns: 1fr; }
       .mobile-nav {
         position: fixed;
         z-index: 6;
@@ -572,6 +620,7 @@
               <div class="membership-label">PAKET AKUN</div>
               <div class="membership-title" id="membershipTitle">Gratis</div>
               <div class="membership-copy" id="membershipCopy">Masuk untuk melihat kuota akun.</div>
+              <div class="membership-reset" id="quotaResetHint" hidden></div>
               <div class="membership-expiry" id="membershipExpiry" hidden></div>
               <div class="membership-actions">
                 <button class="primary" id="buyVipButton" type="button">Pilih paket VIP</button>
@@ -625,7 +674,7 @@
           <div class="page-heading">
             <div class="eyebrow">KIRIM KE ROBLOX</div>
             <h1 id="uploadTitle">Upload audio</h1>
-            <p class="page-intro">Pilih audio, decal, atau model Roblox milikmu, tinjau detailnya, lalu konfirmasi upload.</p>
+            <p class="page-intro">Tambahkan sampai 10 file satu jenis, periksa preview dan nama masing-masing, lalu upload satu per satu.</p>
           </div>
           <div class="upload-grid">
             <section class="surface upload-panel">
@@ -640,17 +689,19 @@
                 <span class="dropzone-content">
                   <span class="upload-glyph">↥</span>
                     <span class="drop-title" id="dropTitle">Taruh file di sini</span>
-                  <span class="drop-hint">atau pilih file dari perangkat</span>
+                  <span class="drop-hint">atau pilih beberapa file dari perangkat</span>
                     <span class="drop-formats" id="dropFormats">MP3 · OGG · WAV · FLAC</span>
                 </span>
               </label>
-              <input class="file-input" id="fileInput" type="file" accept=".mp3,.ogg,.wav,.flac,audio/mpeg,audio/ogg,audio/wav,audio/flac">
-              <div class="file-card" id="fileCard">
-                  <div class="file-icon" id="fileIcon">♫</div>
-                <div class="file-copy"><div class="file-title" id="fileName"></div><div class="file-subtitle" id="fileMeta"></div></div>
-                <button class="remove-file" id="removeFile" type="button" aria-label="Hapus pilihan file">×</button>
-              </div>
-              <audio id="audioPreview" controls hidden style="width:100%;height:38px;margin:-3px 0 15px"></audio>
+              <input class="file-input" id="fileInput" type="file" multiple accept=".mp3,.ogg,.wav,.flac,audio/mpeg,audio/ogg,audio/wav,audio/flac">
+              <section class="queue-panel" id="queuePanel" aria-label="Antrean upload" hidden>
+                <div class="queue-panel-head">
+                  <div class="queue-title">Antrean upload</div>
+                  <div class="queue-count" id="queueCount">0 file</div>
+                </div>
+                <div class="queue-list" id="uploadQueue"></div>
+                <div class="queue-actions"><button class="queue-clear" id="clearQueue" type="button">Kosongkan antrean</button></div>
+              </section>
                 <div class="audio-speed" id="audioSpeedControl">
                   <div class="speed-row">
                     <label for="playbackSpeed">Roblox PlaybackSpeed</label>
@@ -668,12 +719,16 @@
                   </div>
                   <p class="speed-help" id="speedHelp">Audio dipercepat 2.33× sebelum upload. Atur Sound.PlaybackSpeed ke 0.43 agar terdengar normal.</p>
                 </div>
-              <div class="field"><label id="audioNameLabel" for="audioName">Nama audio</label><input id="audioName" type="text" maxlength="50" placeholder="Contoh: ambience hutan sore"></div>
               <div class="status-message" id="uploadStatus" role="status" aria-live="polite"></div>
               <div class="progress" id="uploadProgress" hidden><span></span></div>
-              <button class="primary upload-submit" id="reviewUpload" type="button">Tinjau sebelum upload <span>↗</span></button>
+              <button class="primary upload-submit" id="reviewUpload" type="button">Tinjau antrean upload <span>↗</span></button>
             </section>
             <aside class="surface upload-aside">
+              <div class="quota-panel" aria-live="polite">
+                <div class="quota-panel-label" id="uploadQuotaTitle">Kuota upload</div>
+                <div class="quota-panel-value" id="uploadQuotaValue">Masuk untuk melihat</div>
+                <div class="quota-panel-reset" id="uploadQuotaReset">Batas gratis: 5 percobaan dalam 24 jam.</div>
+              </div>
               <div class="surface-title">Sebelum mengirim</div>
               <div class="surface-subtitle" id="uploadAsideSubtitle">Asset baru dibuat di akun atau grup yang diizinkan API key.</div>
               <div class="aside-rule"></div>
@@ -758,6 +813,15 @@
           </div>
           <section class="surface surface-pad">
             <div class="history-head"><div class="surface-title">Semua upload</div><div class="history-count" id="historyCount">0 asset</div></div>
+            <div class="history-controls" aria-label="Cari dan filter riwayat">
+              <input id="historySearch" type="search" aria-label="Cari nama atau Asset ID" placeholder="Cari nama atau Asset ID">
+              <select id="historyTypeFilter" aria-label="Filter jenis asset">
+                <option value="all">Semua jenis</option>
+                <option value="Audio">Audio</option>
+                <option value="Decal">Decal</option>
+                <option value="Model">Model</option>
+              </select>
+            </div>
             <div id="historyContainer"></div>
           </section>
         </section>
@@ -775,8 +839,8 @@
   <dialog class="modal" id="confirmDialog">
     <h2 id="reviewDialogTitle">Periksa sebelum upload audio</h2>
     <p class="modal-copy" id="reviewDialogCopy">Ini akan membuat asset audio baru di Roblox dan menggunakan kuota creator.</p>
-    <div class="review-row"><div class="review-label">File</div><div class="review-value" id="reviewFile"></div></div>
-    <div class="review-row"><div class="review-label">Nama asset</div><div class="review-value" id="reviewName"></div></div>
+    <div class="review-row"><div class="review-label">File yang akan diproses</div><div class="review-queue-list" id="reviewQueueList"></div></div>
+    <div class="review-row"><div class="review-label">Jumlah</div><div class="review-value" id="reviewCount"></div></div>
     <div class="review-row"><div class="review-label">Creator tujuan</div><div class="review-value" id="reviewCreator"></div></div>
     <div class="review-row" id="reviewPlaybackSpeedRow"><div class="review-label">PlaybackSpeed</div><div class="review-value" id="reviewPlaybackSpeed"></div></div>
     <label class="agreement"><input type="checkbox" id="rightsConfirm"><span id="rightsConfirmText">Saya berhak mengunggah audio ini dan memahami Roblox tetap dapat meninjau atau menolaknya.</span></label>
