@@ -10,6 +10,7 @@ import {
 } from "../_shared/http.ts";
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 import {
+  createSkyboxDiagnostic,
   getRobloxAssetId,
   getSkyboxImageAssetId,
   RobloxImageIdResolutionError,
@@ -76,13 +77,15 @@ Deno.serve(async (request: Request) => {
         const message = error instanceof RobloxImageIdResolutionError
           ? error.message
           : "Roblox gagal mengambil Image ID dari Decal. ID Decal tidak digunakan.";
+        const diagnostic = createSkyboxDiagnostic(error, crypto.randomUUID(), operation.response);
+        console.error("Skybox Image ID resolution failed.", diagnostic);
         const { error: updateError } = await adminClient
           .from("audio_uploads")
           .update({ status: "failed", error_message: message })
           .eq("id", upload.id)
           .eq("discord_user_id", user.id);
         if (updateError) throw new Error("Could not save rejected Skybox Image ID status.");
-        return jsonResponse(request, { status: "failed", error: message });
+        return jsonResponse(request, { status: "failed", error: message, diagnostic });
       }
     } else {
       assetId = getRobloxAssetId(operation.response);

@@ -9,6 +9,7 @@ import {
   SKYBOX_FACES,
   SKYBOX_PROMPTS,
 } from "./skybox.js";
+import { formatSkyboxDiagnostic } from "./skybox-diagnostics.js";
 import { getNextQuotaResetAt } from "../supabase/functions/_shared/quota-window.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -650,6 +651,12 @@ function setSkyFaceStatus(faceKey, state, message) {
   status.textContent = message;
 }
 
+function createSkyboxError(message, diagnostic) {
+  const error = new Error(message);
+  error.diagnostic = diagnostic;
+  return error;
+}
+
 function updateSkyboxControls() {
   const hasAtlas = skyAtlasFiles.length === SKYBOX_FACES.length;
   const faceIds = Object.fromEntries(SKYBOX_FACES.map(({ key }) => [
@@ -867,8 +874,9 @@ function handleSkyboxStreamEvent(event, pollPromises) {
   }
   if (event.status === "failed" && typeof event.error === "string") {
     face.status = "failed";
-    face.error = event.error;
-    setSkyFaceStatus(event.faceKey, "failed", event.error);
+    face.diagnostic = event.diagnostic;
+    face.error = formatSkyboxDiagnostic(event.error, event.diagnostic);
+    setSkyFaceStatus(event.faceKey, "failed", face.error);
     updateSkyboxControls();
     return;
   }
@@ -891,7 +899,12 @@ async function pollSkyboxFace(faceKey, uploadId) {
     }
   } catch (error) {
     face.status = "failed";
-    face.error = error.message || "Roblox menolak gambar ini.";
+    face.diagnostic = error.diagnostic || {
+      stage: "operation-poll",
+      code: Number.isInteger(error.status) ? "operation_http_error" : "operation_request_failed",
+      httpStatus: Number.isInteger(error.status) ? error.status : null,
+    };
+    face.error = formatSkyboxDiagnostic(error.message || "Roblox menolak gambar ini.", face.diagnostic);
     setSkyFaceStatus(faceKey, "failed", face.error);
   }
   updateSkyboxControls();
@@ -913,6 +926,7 @@ async function submitSkyboxBatch(batch) {
   for (const face of batch.files) form.append(`face_${face.key}`, face.file, face.name);
   const pollPromises = [];
   let serverCompleted = false;
+  let batchStage = "batch-request";
   try {
     const response = await fetch("/api/functions/roblox-skybox-upload", {
       method: "POST",
@@ -922,11 +936,23 @@ async function submitSkyboxBatch(batch) {
     });
     if (!response.ok) {
       const data = await response.json().catch(() => null);
-      throw new Error(typeof data?.error === "string" ? data.error : "Batch upload ditolak oleh server.");
+      throw createSkyboxError(
+        typeof data?.error === "string" ? data.error : "Batch upload ditolak oleh server.",
+        data?.diagnostic || {
+          stage: "batch-request",
+          code: `batch_http_${response.status}`,
+          httpStatus: response.status,
+        },
+      );
     }
     if (!response.headers.get("Content-Type")?.toLowerCase().includes("text/event-stream") || !response.body) {
-      throw new Error("Layanan upload tidak mengembalikan progress batch yang valid.");
+      throw createSkyboxError("Layanan upload tidak mengembalikan progress batch yang valid.", {
+        stage: "batch-stream",
+        code: "invalid_stream_response",
+        httpStatus: response.status,
+      });
     }
+    batchStage = "batch-stream";
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -943,7 +969,10 @@ async function submitSkyboxBatch(batch) {
           const event = JSON.parse(dataLine.slice(5).trim());
           if (event.type === "complete") serverCompleted = true;
           if (event.type === "fatal") {
-            throw new Error(event.error || "Batch Skybox gagal diproses.");
+            throw createSkyboxError(
+              event.error || "Batch Skybox gagal diproses.",
+              event.diagnostic || { stage: "batch-stream", code: "batch_processing_failed" },
+            );
           }
           handleSkyboxStreamEvent(event, pollPromises);
         }
@@ -951,7 +980,13 @@ async function submitSkyboxBatch(batch) {
       }
       if (done) break;
     }
-    if (!serverCompleted) throw new Error("Progress batch terputus sebelum semua gambar selesai dikirim.");
+    if (!serverCompleted) {
+      throw createSkyboxError("Progress batch terputus sebelum semua gambar selesai dikirim.", {
+        stage: "batch-stream",
+        code: "incomplete_stream",
+      });
+    }
+    batchStage = "operation-poll";
     await Promise.all(pollPromises);
 
     const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
@@ -972,12 +1007,21 @@ async function submitSkyboxBatch(batch) {
         const face = skyboxBatch.faces[key];
         if (face?.status === "uploading") {
           face.status = "unknown";
-          setSkyFaceStatus(key, "failed", "Status belum diterima · periksa riwayat sebelum upload ulang");
+          setSkyFaceStatus(key, "failed", formatSkyboxDiagnostic(
+            "Status belum diterima · periksa riwayat sebelum upload ulang",
+            { stage: "batch-stream", code: "face_status_missing" },
+          ));
         }
       }
       skyboxBatch.status = "failed";
     }
-    setSkyboxAtlasStatus("error", error.message || "Batch Skybox gagal dikirim.");
+    setSkyboxAtlasStatus(
+      "error",
+      formatSkyboxDiagnostic(
+        error.message || "Batch Skybox gagal dikirim.",
+        error.diagnostic || { stage: batchStage, code: `${batchStage.replace(/-/g, "_")}_failed` },
+      ),
+    );
   } finally {
     skyboxBusy = false;
     updateSkyboxControls();
@@ -1647,7 +1691,9 @@ async function pollOperation(uploadId, assetType, refreshHistory = true) {
       if (refreshHistory) await loadHistory();
       return { status: "completed", assetId: String(data.assetId || "") };
     }
-    if (data.status === "failed") throw new Error(data.error || "Roblox menolak upload.");
+    if (data.status === "failed") {
+      throw createSkyboxError(data.error || "Roblox menolak upload.", data.diagnostic);
+    }
   }
   if (refreshHistory) await loadHistory();
   return { status: "processing", assetId: "" };

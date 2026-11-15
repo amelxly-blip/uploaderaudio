@@ -462,7 +462,7 @@
     .skybox-preview-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: var(--muted); font-size: 11px; line-height: 1.6; text-align: center; }
     .skybox-preview-fallback[hidden] { display: none; }
     .skybox-orbit-reset { flex: 0 0 auto; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #202126; color: var(--text); cursor: pointer; font-size: 10px; }
-    .skybox-face-status { display: flex; min-height: 18px; align-items: center; justify-content: space-between; gap: 6px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .skybox-face-status { min-height: 18px; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
     .skybox-face-status[data-state="completed"] { color: #b7d9c2; }
     .skybox-face-status[data-state="failed"] { color: #e7aaaa; }
     .skybox-face-status[data-state="uploading"], .skybox-face-status[data-state="processing"] { color: #e2d5a5; }

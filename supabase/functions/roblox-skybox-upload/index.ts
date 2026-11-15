@@ -91,6 +91,9 @@ function eventStreamResponse(request: Request, faces: SkyboxFaceUpload[], discor
 
           let operationPath = "";
           let acceptedByRoblox = false;
+          let stage = "roblox-asset-create";
+          let code = "roblox_asset_create_failed";
+          let httpStatus: number | null = null;
           try {
             const response = await fetch("https://apis.roblox.com/assets/v1/assets", {
               method: "POST",
@@ -98,19 +101,37 @@ function eventStreamResponse(request: Request, faces: SkyboxFaceUpload[], discor
               body: form,
               signal: AbortSignal.timeout(30000),
             });
-            if (!response.ok) throw robloxError(response.status);
+            if (!response.ok) {
+              httpStatus = response.status;
+              code = `roblox_http_${response.status}`;
+              throw robloxError(response.status);
+            }
             acceptedByRoblox = true;
+            stage = "operation-path";
+            code = "invalid_operation_path";
             const result = await response.json().catch(() => null);
             operationPath = result?.path;
             if (typeof operationPath !== "string" || !/^operations\/[A-Za-z0-9._-]+$/.test(operationPath)) {
               throw new HttpResponseError(502, "Roblox tidak mengembalikan status operasi yang valid.");
             }
+            stage = "save-operation";
+            code = "save_operation_failed";
             await updateUpload(face.uploadId, discordUserId, { operation_path: operationPath });
             send({ type: "face", faceKey: face.key, status: "processing", uploadId: face.uploadId });
           } catch (error) {
+            const diagnostic = {
+              diagnosticId: crypto.randomUUID(),
+              stage,
+              code,
+              httpStatus,
+              faceKey: face.key,
+            };
             const message = acceptedByRoblox
-              ? "Roblox menerima gambar, tetapi statusnya gagal disimpan. Periksa Creator Dashboard sebelum mengulangi upload."
+              ? stage === "operation-path"
+                ? "Roblox menerima gambar, tetapi status operasi tidak valid. Periksa Creator Dashboard sebelum mengulangi upload."
+                : "Roblox menerima gambar, tetapi statusnya gagal disimpan. Periksa Creator Dashboard sebelum mengulangi upload."
               : safeMessage(error);
+            console.error("Skybox face upload failed.", diagnostic);
             try {
               await updateUpload(face.uploadId, discordUserId, {
                 status: "failed",
@@ -119,13 +140,22 @@ function eventStreamResponse(request: Request, faces: SkyboxFaceUpload[], discor
             } catch (updateError) {
               console.error("Could not save failed Skybox upload status.", updateError);
             }
-            send({ type: "face", faceKey: face.key, status: "failed", error: message });
+            send({ type: "face", faceKey: face.key, status: "failed", error: message, diagnostic });
           }
         }
         send({ type: "complete" });
       })().catch((error) => {
-        console.error("Skybox batch processing failed.", error);
-        send({ type: "fatal", error: "Batch upload berhenti sebelum semua sisi diproses." });
+        const diagnostic = {
+          diagnosticId: crypto.randomUUID(),
+          stage: "batch-stream",
+          code: "batch_processing_failed",
+        };
+        console.error("Skybox batch processing failed.", diagnostic);
+        send({
+          type: "fatal",
+          error: "Batch upload berhenti sebelum semua sisi diproses.",
+          diagnostic,
+        });
       }).finally(() => {
         clearInterval(heartbeat);
         if (streamOpen) {
