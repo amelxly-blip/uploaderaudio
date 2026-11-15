@@ -425,6 +425,9 @@ verify_jwt = false
 [functions.roblox-configure]
 verify_jwt = false
 
+[functions.roblox-disconnect]
+verify_jwt = false
+
 [functions.roblox-upload]
 verify_jwt = false
 
