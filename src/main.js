@@ -419,25 +419,25 @@ function initializeSkyboxScene() {
         vec3 color;
         if (az >= ax && az >= ay) {
           if (ray.z < 0.0) {
-            uv = vec2(0.5 + ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
+            uv = vec2(0.5 - ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
             color = texture2D(uFt, uv).rgb;
           } else {
-            uv = vec2(0.5 - ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
+            uv = vec2(0.5 + ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
             color = texture2D(uBk, uv).rgb;
           }
         } else if (ax >= ay) {
           if (ray.x > 0.0) {
-            uv = vec2(0.5 + ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
+            uv = vec2(0.5 - ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
             color = texture2D(uRt, uv).rgb;
           } else {
-            uv = vec2(0.5 - ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
+            uv = vec2(0.5 + ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
             color = texture2D(uLf, uv).rgb;
           }
         } else if (ray.y > 0.0) {
-          uv = vec2(0.5 - ray.z / (2.0 * ay), 0.5 + ray.x / (2.0 * ay));
+          uv = vec2(0.5 + ray.z / (2.0 * ay), 0.5 + ray.x / (2.0 * ay));
           color = texture2D(uUp, uv).rgb;
         } else {
-          uv = vec2(0.5 - ray.z / (2.0 * ay), 0.5 - ray.x / (2.0 * ay));
+          uv = vec2(0.5 + ray.z / (2.0 * ay), 0.5 - ray.x / (2.0 * ay));
           color = texture2D(uDn, uv).rgb;
         }
         gl_FragColor = vec4(color, 1.0);

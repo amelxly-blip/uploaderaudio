@@ -12,12 +12,12 @@ const MIN_SKYBOX_PANORAMA_FACE_SIZE = 128;
 const SKYBOX_PI = Math.PI;
 
 const SKYBOX_FACE_ORIENTATIONS = {
-  Ft: "menghadap depan (-Z), kanan gambar ke +X dan atas gambar ke +Y",
-  Bk: "menghadap belakang (+Z), kanan gambar ke -X dan atas gambar ke +Y",
-  Lf: "menghadap kiri (-X), kanan gambar ke -Z dan atas gambar ke +Y",
-  Rt: "menghadap kanan (+X), kanan gambar ke +Z dan atas gambar ke +Y",
-  Up: "menghadap atas (+Y), kanan gambar ke -Z dan tepi atas mengarah ke kanan (+X)",
-  Dn: "menghadap bawah (-Y), kanan gambar ke -Z dan tepi atas mengarah ke kiri (-X)",
+  Ft: "menghadap depan (-Z), kanan gambar ke -X dan atas gambar ke +Y",
+  Bk: "menghadap belakang (+Z), kanan gambar ke +X dan atas gambar ke +Y",
+  Lf: "menghadap kiri (-X), kanan gambar ke +Z dan atas gambar ke +Y",
+  Rt: "menghadap kanan (+X), kanan gambar ke -Z dan atas gambar ke +Y",
+  Up: "menghadap atas (+Y), kanan gambar ke +Z dan tepi atas mengarah ke kanan (+X)",
+  Dn: "menghadap bawah (-Y), kanan gambar ke +Z dan tepi atas mengarah ke kiri (-X)",
 };
 
 export function getSkyboxAtlasCells(width, height) {
@@ -133,34 +133,34 @@ export function projectEquirectangularFace(sourcePixels, width, height, faceKey,
 
       switch (faceKey) {
         case "Ft":
-          directionX = horizontal;
+          directionX = -horizontal;
           directionY = vertical;
           directionZ = -1;
           break;
         case "Bk":
-          directionX = -horizontal;
+          directionX = horizontal;
           directionY = vertical;
           directionZ = 1;
           break;
         case "Lf":
           directionX = -1;
           directionY = vertical;
-          directionZ = -horizontal;
+          directionZ = horizontal;
           break;
         case "Rt":
           directionX = 1;
           directionY = vertical;
-          directionZ = horizontal;
+          directionZ = -horizontal;
           break;
         case "Up":
           directionX = vertical;
           directionY = 1;
-          directionZ = -horizontal;
+          directionZ = horizontal;
           break;
         default:
           directionX = -vertical;
           directionY = -1;
-          directionZ = -horizontal;
+          directionZ = horizontal;
           break;
       }
 
