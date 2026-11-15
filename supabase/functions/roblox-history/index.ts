@@ -6,6 +6,7 @@ import {
   jsonResponse,
   preflightResponse,
 } from "../_shared/http.ts";
+import { canRetrySkyboxImageResolution } from "../_shared/skybox-assets.js";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -19,12 +20,23 @@ Deno.serve(async (request: Request) => {
     const { user } = await authenticate(request);
     const { data, error } = await adminClient
       .from("audio_uploads")
-      .select("id,display_name,file_size,asset_type,status,asset_id,error_message,created_at")
+      .select("id,display_name,file_size,asset_type,status,asset_id,error_message,created_at,operation_path")
       .eq("discord_user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) throw new Error("Could not retrieve upload history.");
-    return jsonResponse(request, { uploads: data });
+    const uploads = data.map((upload) => ({
+      id: upload.id,
+      display_name: upload.display_name,
+      file_size: upload.file_size,
+      asset_type: upload.asset_type,
+      status: upload.status,
+      asset_id: upload.asset_id,
+      error_message: upload.error_message,
+      created_at: upload.created_at,
+      canRetryImageId: canRetrySkyboxImageResolution(upload, true),
+    }));
+    return jsonResponse(request, { uploads });
   } catch (error) {
     return errorResponse(request, error);
   }

@@ -674,10 +674,18 @@ function updateSkyboxControls() {
     || !me.robloxConfigured
     || skyboxBatch?.status !== "ready";
   $("#clearSkyAtlas").disabled = skyboxBusy || !hasAtlas;
+  const retryingFailedSkybox = SKYBOX_FACES.some(({ key }) => {
+    const face = skyboxBatch?.faces[key];
+    return face?.status === "failed" && face.uploadId;
+  });
+  $("#refreshSkyAtlasStatus").textContent = retryingFailedSkybox
+    ? "Coba baca Image ID lagi"
+    : "Periksa status lagi";
   $("#refreshSkyAtlasStatus").hidden = skyboxBusy
-    || !SKYBOX_FACES.some(({ key }) =>
-      skyboxBatch?.faces[key]?.status === "processing" && skyboxBatch.faces[key].uploadId
-    );
+    || !SKYBOX_FACES.some(({ key }) => {
+      const face = skyboxBatch?.faces[key];
+      return face?.uploadId && ["processing", "failed"].includes(face.status);
+    });
   $("#generateSkyFile").disabled = skyboxBusy || !allIdsAvailable || !batchComplete;
   $("#skyAtlasInput").disabled = skyboxBusy;
   $$("[data-sky-id]").forEach((input) => { input.disabled = skyboxBusy; });
@@ -887,7 +895,8 @@ async function pollSkyboxFace(faceKey, uploadId) {
   const face = skyboxBatch?.faces[faceKey];
   if (!face) return;
   try {
-    const result = await pollOperation(uploadId, "Decal", false);
+    const retryFailedResolution = face.status === "failed";
+    const result = await pollOperation(uploadId, "Decal", false, retryFailedResolution);
     if (result.status === "completed") {
       face.status = "completed";
       face.assetId = result.assetId;
@@ -1040,20 +1049,24 @@ async function submitSkyboxBatch(batch) {
 async function refreshSkyboxStatus() {
   if (skyboxBusy || !skyboxBatch) return;
   const pending = SKYBOX_FACES.filter(({ key }) =>
-    skyboxBatch.faces[key]?.status === "processing" && skyboxBatch.faces[key].uploadId
+    ["processing", "failed"].includes(skyboxBatch.faces[key]?.status)
+      && skyboxBatch.faces[key].uploadId
   );
   if (!pending.length) return;
   skyboxBusy = true;
-  setSkyboxAtlasStatus("", "Memeriksa status gambar yang masih diproses...");
+  setSkyboxAtlasStatus("", "Memeriksa status atau mencoba membaca ulang Image ID...");
   updateSkyboxControls();
   await Promise.all(pending.map(({ key }) => pollSkyboxFace(key, skyboxBatch.faces[key].uploadId)));
   const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
   if (states.every((state) => state === "completed")) {
     skyboxBatch.status = "completed";
     setSkyboxAtlasStatus("success", "Keenam Image ID sudah terpasang dan file Sky siap diunduh.");
+  } else if (states.some((state) => state === "failed")) {
+    skyboxBatch.status = "failed";
+    setSkyboxAtlasStatus("error", "Sebagian Image ID masih gagal dibaca. Perbaiki konfigurasi lalu coba baca ulang tanpa upload ulang.");
   } else {
-    skyboxBatch.status = states.some((state) => state === "failed") ? "failed" : "processing";
     setSkyboxAtlasStatus("", "Beberapa gambar masih diproses. Periksa status lagi nanti.");
+    skyboxBatch.status = "processing";
   }
   skyboxBusy = false;
   updateSkyboxControls();
@@ -1683,10 +1696,13 @@ function openReview() {
   $("#confirmDialog").showModal();
 }
 
-async function pollOperation(uploadId, assetType, refreshHistory = true) {
+async function pollOperation(uploadId, assetType, refreshHistory = true, retryFailedResolution = false) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    const data = await callFunction("roblox-operation", { body: { uploadId } });
+    if (!retryFailedResolution || attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    const body = retryFailedResolution ? { uploadId, retryFailed: true } : { uploadId };
+    const data = await callFunction("roblox-operation", { body });
     if (data.status === "completed") {
       if (refreshHistory) await loadHistory();
       return { status: "completed", assetId: String(data.assetId || "") };
@@ -1803,6 +1819,9 @@ function renderHistory() {
     const assetIdMarkup = assetId
       ? `<span class="history-asset-id">ID ${escapeHtml(assetId)}</span><button class="copy-id-button" type="button" data-copy-asset-id="${escapeHtml(assetId)}">Salin ID</button>`
       : '<span class="history-asset-id">Asset ID belum tersedia</span>';
+    const retryImageIdMarkup = item.canRetryImageId === true
+      ? `<button class="copy-id-button" type="button" data-retry-image-id="${escapeHtml(item.id)}">Baca Image ID lagi</button>`
+      : "";
     return `<article class="history-card">
       <div class="history-card-head">
         <div class="track-icon">${icon}</div>
@@ -1812,7 +1831,7 @@ function renderHistory() {
         </div>
         <span class="history-badge ${statusClass}">${label}</span>
       </div>
-      <div class="history-card-detail">${assetIdMarkup}</div>
+      <div class="history-card-detail">${assetIdMarkup}${retryImageIdMarkup}</div>
     </article>`;
   }).join("");
   target.innerHTML = `<div class="history-grid">${cards}</div>`;
@@ -2025,6 +2044,29 @@ $("#confirmUpload").addEventListener("click", () => {
 $("#historySearch").addEventListener("input", renderHistory);
 $("#historyTypeFilter").addEventListener("change", renderHistory);
 $("#historyContainer").addEventListener("click", async (event) => {
+  const retryButton = event.target.closest("[data-retry-image-id]");
+  if (retryButton) {
+    const upload = history.find((item) => item.id === retryButton.dataset.retryImageId);
+    if (!upload || upload.canRetryImageId !== true) return;
+    retryButton.disabled = true;
+    retryButton.textContent = "Membaca...";
+    try {
+      const result = await pollOperation(upload.id, "Image", false, true);
+      await loadHistory();
+      showToast(result.status === "completed"
+        ? "Image ID berhasil dipulihkan. Salin ID dari Riwayat."
+        : "Roblox masih memproses. Periksa Riwayat lagi nanti.");
+    } catch (error) {
+      await loadHistory();
+      showToast(`Image ID gagal dipulihkan: ${error.message}`);
+    } finally {
+      if (retryButton.isConnected) {
+        retryButton.disabled = false;
+        retryButton.textContent = "Baca Image ID lagi";
+      }
+    }
+    return;
+  }
   const button = event.target.closest("[data-copy-asset-id]");
   if (!button) return;
   try {

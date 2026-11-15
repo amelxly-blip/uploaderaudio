@@ -120,6 +120,14 @@ function normalizeSkyboxAssetType(assetType) {
   return null;
 }
 
+export function canRetrySkyboxImageResolution(upload, retryRequested) {
+  return retryRequested === true
+    && upload?.status === "failed"
+    && upload.asset_type === SKYBOX_ASSET_TYPE
+    && typeof upload.operation_path === "string"
+    && /^operations\/[A-Za-z0-9._-]+$/.test(upload.operation_path);
+}
+
 export function extractDecalImageAssetId(xml) {
   if (typeof xml !== "string" || !/<roblox(?:\s|>)/i.test(xml)) {
     throw new RobloxImageIdResolutionError(

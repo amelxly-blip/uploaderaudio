@@ -10,6 +10,7 @@ import {
 } from "../_shared/http.ts";
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 import {
+  canRetrySkyboxImageResolution,
   createSkyboxDiagnostic,
   getRobloxAssetId,
   getSkyboxImageAssetId,
@@ -41,10 +42,11 @@ Deno.serve(async (request: Request) => {
       .maybeSingle();
     if (lookupError) throw new Error("Could not retrieve upload operation.");
     if (!upload) throw new HttpResponseError(404, "Status upload tidak ditemukan.");
+    const retryFailedSkybox = canRetrySkyboxImageResolution(upload, body?.retryFailed);
     if (upload.status === "completed") {
       return jsonResponse(request, { status: "completed", assetId: upload.asset_id });
     }
-    if (upload.status === "failed") {
+    if (upload.status === "failed" && !retryFailedSkybox) {
       return jsonResponse(request, { status: "failed", error: upload.error_message });
     }
     if (!upload.operation_path) return jsonResponse(request, { status: "processing" });
