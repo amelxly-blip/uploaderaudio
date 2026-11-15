@@ -1,10 +1,12 @@
 export const SKYBOX_ASSET_TYPE = "Image";
-export const SKYBOX_UPLOAD_ASSET_TYPE = "Decal";
+export const SKYBOX_UPLOAD_ASSET_TYPE = "Image";
+export const SKYBOX_DECAL_ASSET_TYPE = "Decal";
 
 const ASSET_DELIVERY_URL = "https://apis.roblox.com/asset-delivery-api/v1/assetId/";
 const MAX_DECAL_METADATA_BYTES = 1024 * 1024;
 const IMAGE_CONTENT_PROPERTIES = new Set(["texture", "texturecontent", "colormap", "colormapcontent"]);
 const ROBLOX_DOMAINS = ["roblox.com", "rbxcdn.com"];
+const LEGACY_DECAL_ACCESS_ERROR = "menolak membaca konten Decal.";
 
 export class RobloxImageIdResolutionError extends Error {
   constructor(message, { stage, code, httpStatus = null, context = {} } = {}) {
@@ -15,6 +17,15 @@ export class RobloxImageIdResolutionError extends Error {
     this.httpStatus = Number.isInteger(httpStatus) ? httpStatus : null;
     this.context = context;
   }
+}
+
+export function createSkyboxAssetRequest(displayName, creator) {
+  return {
+    assetType: SKYBOX_UPLOAD_ASSET_TYPE,
+    displayName,
+    description: "Skybox face uploaded through Roblox Open Cloud.",
+    creationContext: { creator },
+  };
 }
 
 export function createSkyboxDiagnostic(error, diagnosticId, operationResponse = null) {
@@ -114,7 +125,7 @@ function normalizeSkyboxAssetType(assetType) {
   if (assetType === "ASSET_TYPE_IMAGE" || assetType === SKYBOX_ASSET_TYPE) {
     return "ASSET_TYPE_IMAGE";
   }
-  if (assetType === "ASSET_TYPE_DECAL" || assetType === SKYBOX_UPLOAD_ASSET_TYPE) {
+  if (assetType === "ASSET_TYPE_DECAL" || assetType === SKYBOX_DECAL_ASSET_TYPE) {
     return "ASSET_TYPE_DECAL";
   }
   return null;
@@ -125,7 +136,8 @@ export function canRetrySkyboxImageResolution(upload, retryRequested) {
     && upload?.status === "failed"
     && upload.asset_type === SKYBOX_ASSET_TYPE
     && typeof upload.operation_path === "string"
-    && /^operations\/[A-Za-z0-9._-]+$/.test(upload.operation_path);
+    && /^operations\/[A-Za-z0-9._-]+$/.test(upload.operation_path)
+    && !(typeof upload.error_message === "string" && upload.error_message.includes(LEGACY_DECAL_ACCESS_ERROR));
 }
 
 export function extractDecalImageAssetId(xml) {
@@ -198,7 +210,7 @@ export async function resolveDecalImageAssetId(decalAssetId, apiKey, fetchImpl =
     assetResponse = await fetchImpl(`${ASSET_DELIVERY_URL}${decalAssetId}`, {
       headers: {
         "x-api-key": apiKey,
-        AssetType: SKYBOX_UPLOAD_ASSET_TYPE,
+        AssetType: SKYBOX_DECAL_ASSET_TYPE,
         AssetFormat: "xml",
       },
       signal: AbortSignal.timeout(10000),
@@ -212,7 +224,7 @@ export async function resolveDecalImageAssetId(decalAssetId, apiKey, fetchImpl =
 
   if (assetResponse.status === 401 || assetResponse.status === 403) {
     throw new RobloxImageIdResolutionError(
-      "Roblox menolak membaca konten Decal. API key perlu izin Assets: Read selain Write.",
+      "Roblox Asset Delivery menolak membaca konten Decal. Izin API key Open Cloud tidak berlaku untuk endpoint ini; upload ulang Skybox sebagai Image untuk menerima Image ID langsung.",
       {
         stage: "asset-delivery-request",
         code: "asset_delivery_permission_denied",

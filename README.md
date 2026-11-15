@@ -44,9 +44,10 @@ can be copied. The free quota panel shows the next rolling 24-hour reset time.
 The Skybox tool accepts a single 3:2 atlas in a 3-column × 2-row layout, crops
 the six square faces in the browser, and shows them in an interactive
 inside-the-sky preview. After one confirmation, the server uploads each face
-through Roblox Open Cloud as a Decal, then reads the Decal content through the
-official Asset Delivery API to extract the linked Image ID used by `Sky`.
-The Roblox API key needs both Assets Read and Write permissions for this flow.
+through Roblox Open Cloud as an Image and uses the returned Image ID directly.
+This avoids relying on Asset Delivery to read private Decal content. Roblox
+Open Cloud API keys need both Assets Read and Write permissions for the upload
+operation flow.
 A Skybox batch
 consumes one application quota attempt, while Roblox still receives six
 asset-creation requests and applies its own quotas and permissions. Once all six

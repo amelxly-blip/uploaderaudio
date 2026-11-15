@@ -674,9 +674,13 @@ function updateSkyboxControls() {
     || !me.robloxConfigured
     || skyboxBatch?.status !== "ready";
   $("#clearSkyAtlas").disabled = skyboxBusy || !hasAtlas;
+  const isRetryableFace = (face) =>
+    face?.uploadId
+    && ["processing", "failed"].includes(face.status)
+    && face.diagnostic?.code !== "asset_delivery_permission_denied";
   const retryingFailedSkybox = SKYBOX_FACES.some(({ key }) => {
     const face = skyboxBatch?.faces[key];
-    return face?.status === "failed" && face.uploadId;
+    return face?.status === "failed" && isRetryableFace(face);
   });
   $("#refreshSkyAtlasStatus").textContent = retryingFailedSkybox
     ? "Coba baca Image ID lagi"
@@ -684,7 +688,7 @@ function updateSkyboxControls() {
   $("#refreshSkyAtlasStatus").hidden = skyboxBusy
     || !SKYBOX_FACES.some(({ key }) => {
       const face = skyboxBatch?.faces[key];
-      return face?.uploadId && ["processing", "failed"].includes(face.status);
+      return isRetryableFace(face);
     });
   $("#generateSkyFile").disabled = skyboxBusy || !allIdsAvailable || !batchComplete;
   $("#skyAtlasInput").disabled = skyboxBusy;
@@ -848,11 +852,11 @@ function openSkyboxReview() {
   pendingSkyboxBatch = { name, files: [...skyAtlasFiles] };
   $("#reviewDialogTitle").textContent = "Konfirmasi upload skybox";
   $("#reviewDialogCopy").textContent =
-    "Setiap sisi diunggah sebagai Decal. Server perlu izin Assets: Read untuk mengambil Image ID terkait setelah upload.";
+    "Setiap sisi diunggah langsung sebagai Image. Roblox mengembalikan Image ID yang dipakai Skybox; enam asset baru akan dibuat.";
   $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
   $("#reviewQueueList").innerHTML = pendingSkyboxBatch.files.map((face) => {
     const definition = SKYBOX_FACES.find(({ key }) => key === face.key);
-    return `<div class="review-queue-item"><strong>${escapeHtml(definition.label)} · ${escapeHtml(face.name)}</strong><span>Decal → Image ID · ${escapeHtml(formatSize(face.size))}</span></div>`;
+    return `<div class="review-queue-item"><strong>${escapeHtml(definition.label)} · ${escapeHtml(face.name)}</strong><span>Image asset · ${escapeHtml(formatSize(face.size))}</span></div>`;
   }).join("");
   $("#reviewCount").textContent =
     "6 asset Roblox. Batch ini memakai 1 percobaan kuota aplikasi; kuota Roblox tetap berlaku.";
@@ -895,7 +899,8 @@ async function pollSkyboxFace(faceKey, uploadId) {
   const face = skyboxBatch?.faces[faceKey];
   if (!face) return;
   try {
-    const retryFailedResolution = face.status === "failed";
+    const retryFailedResolution = face.status === "failed"
+      && face.diagnostic?.code !== "asset_delivery_permission_denied";
     const result = await pollOperation(uploadId, "Decal", false, retryFailedResolution);
     if (result.status === "completed") {
       face.status = "completed";
@@ -1051,6 +1056,7 @@ async function refreshSkyboxStatus() {
   const pending = SKYBOX_FACES.filter(({ key }) =>
     ["processing", "failed"].includes(skyboxBatch.faces[key]?.status)
       && skyboxBatch.faces[key].uploadId
+      && skyboxBatch.faces[key].diagnostic?.code !== "asset_delivery_permission_denied"
   );
   if (!pending.length) return;
   skyboxBusy = true;
@@ -1063,7 +1069,7 @@ async function refreshSkyboxStatus() {
     setSkyboxAtlasStatus("success", "Keenam Image ID sudah terpasang dan file Sky siap diunduh.");
   } else if (states.some((state) => state === "failed")) {
     skyboxBatch.status = "failed";
-    setSkyboxAtlasStatus("error", "Sebagian Image ID masih gagal dibaca. Perbaiki konfigurasi lalu coba baca ulang tanpa upload ulang.");
+    setSkyboxAtlasStatus("error", "Sebagian sisi gagal diproses. Periksa detail error pada tiap sisi sebelum upload ulang.");
   } else {
     setSkyboxAtlasStatus("", "Beberapa gambar masih diproses. Periksa status lagi nanti.");
     skyboxBatch.status = "processing";

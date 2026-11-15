@@ -110,7 +110,7 @@ function isRbxmx(bytes) {
 
 export async function validateRobloxAsset(assetType, fileName, bytes) {
   if (assetType === "Audio") return { ...await validateAudioFile(fileName, bytes), assetType };
-  if (!["Decal", "Model"].includes(assetType)) {
+  if (!["Decal", "Image", "Model"].includes(assetType)) {
     throw new AudioValidationError(400, "Jenis asset tidak valid.");
   }
   if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
@@ -121,10 +121,11 @@ export async function validateRobloxAsset(assetType, fileName, bytes) {
   }
 
   const extension = safeExtension(fileName);
-  if (assetType === "Decal") {
+  if (assetType === "Decal" || assetType === "Image") {
     const expectedMime = IMAGE_TYPES.get(`.${extension}`);
     if (!expectedMime) {
-      throw new AudioValidationError(415, "Format decal yang didukung: PNG, JPG, JPEG, BMP, dan TGA.");
+      const label = assetType === "Image" ? "gambar" : "decal";
+      throw new AudioValidationError(415, `Format ${label} yang didukung: PNG, JPG, JPEG, BMP, dan TGA.`);
     }
     const detectedMime = expectedMime === "image/tga"
       ? isTga(bytes) ? "image/tga" : null

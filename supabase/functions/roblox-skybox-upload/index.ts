@@ -18,6 +18,7 @@ import {
 } from "../_shared/http.ts";
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
 import {
+  createSkyboxAssetRequest,
   SKYBOX_ASSET_TYPE,
   SKYBOX_UPLOAD_ASSET_TYPE,
 } from "../_shared/skybox-assets.js";
@@ -77,14 +78,7 @@ function eventStreamResponse(request: Request, faces: SkyboxFaceUpload[], discor
 
       void (async () => {
         for (const face of faces) {
-          const requestBody = {
-            assetType: SKYBOX_UPLOAD_ASSET_TYPE,
-            displayName: face.displayName,
-            description: "Skybox face uploaded through Roblox Open Cloud.",
-            creationContext: {
-              creator: face.creator,
-            },
-          };
+          const requestBody = createSkyboxAssetRequest(face.displayName, face.creator);
           const form = new FormData();
           form.append("request", JSON.stringify(requestBody));
           form.append("fileContent", new Blob([face.bytes], { type: face.mime }), face.fileName);
