@@ -110,6 +110,16 @@ export function getRobloxAssetId(response, expectedAssetType = null) {
   return String(assetId);
 }
 
+function normalizeSkyboxAssetType(assetType) {
+  if (assetType === "ASSET_TYPE_IMAGE" || assetType === SKYBOX_ASSET_TYPE) {
+    return "ASSET_TYPE_IMAGE";
+  }
+  if (assetType === "ASSET_TYPE_DECAL" || assetType === SKYBOX_UPLOAD_ASSET_TYPE) {
+    return "ASSET_TYPE_DECAL";
+  }
+  return null;
+}
+
 export function extractDecalImageAssetId(xml) {
   if (typeof xml !== "string" || !/<roblox(?:\s|>)/i.test(xml)) {
     throw new RobloxImageIdResolutionError(
@@ -261,20 +271,21 @@ export async function resolveDecalImageAssetId(decalAssetId, apiKey, fetchImpl =
 }
 
 export async function getSkyboxImageAssetId(operationResponse, apiKey, fetchImpl = fetch) {
+  const assetType = normalizeSkyboxAssetType(operationResponse?.assetType);
   const context = {
     assetType: typeof operationResponse?.assetType === "string" ? operationResponse.assetType : "missing",
     hasAssetId: (typeof operationResponse?.assetId === "number" || typeof operationResponse?.assetId === "string")
       && /^\d+$/.test(String(operationResponse.assetId)),
   };
-  if (operationResponse?.assetType === "ASSET_TYPE_IMAGE") {
-    const imageId = getRobloxAssetId(operationResponse, "ASSET_TYPE_IMAGE");
+  if (assetType === "ASSET_TYPE_IMAGE") {
+    const imageId = getRobloxAssetId(operationResponse, operationResponse.assetType);
     if (imageId) return imageId;
     throw new RobloxImageIdResolutionError(
       "Roblox menandai hasil sebagai Image, tetapi Asset ID-nya tidak valid.",
       { stage: "operation-response", code: "invalid_image_id", context },
     );
-  } else if (operationResponse?.assetType === "ASSET_TYPE_DECAL") {
-    const decalId = getRobloxAssetId(operationResponse, "ASSET_TYPE_DECAL");
+  } else if (assetType === "ASSET_TYPE_DECAL") {
+    const decalId = getRobloxAssetId(operationResponse, operationResponse.assetType);
     if (decalId) return resolveDecalImageAssetId(decalId, apiKey, fetchImpl);
     throw new RobloxImageIdResolutionError(
       "Roblox menandai hasil sebagai Decal, tetapi Asset ID-nya tidak valid.",
