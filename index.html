@@ -282,8 +282,13 @@
     .membership-stat-label { color: var(--muted); font-size: 10px; line-height: 1.45; }
     .membership-stat-value { font-size: clamp(24px, 3vw, 34px); font-weight: 710; letter-spacing: -.06em; font-variant-numeric: tabular-nums; }
     .membership-stat-hint { color: var(--quiet); font-size: 9px; }
-    .quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 14px; }
-    .quick-actions-label { margin-right: 3px; color: var(--muted); font-size: 10px; }
+    .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 166px)); gap: 8px; margin-top: 14px; }
+    .quick-actions-label { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
+    .quick-action-card { display: grid; min-height: 67px; grid-template-columns: 27px 1fr; align-content: center; align-items: center; gap: 0 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, #1d1e22, #151619); color: var(--text); cursor: pointer; text-align: left; transition: background .18s ease, border-color .18s ease; }
+    .quick-action-card:hover { border-color: #5a5b61; background: #25262b; }
+    .quick-action-icon { display: grid; width: 27px; height: 27px; grid-row: span 2; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #28292e; color: var(--silver); font-size: 13px; }
+    .quick-action-title { font-size: 10px; font-weight: 680; }
+    .quick-action-hint { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.35; }
 
     .upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) 285px; align-items: start; gap: 18px; }
     .upload-panel { padding: 21px; }
@@ -423,6 +428,57 @@
     .copy-id-button { min-height: 31px; flex: 0 0 auto; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #222327; color: var(--text); cursor: pointer; font-size: 10px; }
     .copy-id-button:disabled { cursor: not-allowed; opacity: .45; }
     .history-no-results { padding: 32px 16px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 11px; text-align: center; }
+    .skybox-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; align-items: start; gap: 15px; }
+    .skybox-panel { padding: 19px; }
+    .skybox-face-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 17px; }
+    .skybox-face-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #111215; }
+    .skybox-face-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 8px; font-size: 10px; font-weight: 680; }
+    .skybox-face-heading code { color: var(--muted); font-size: 9px; font-weight: 450; }
+    .skybox-face-preview { position: relative; display: grid; aspect-ratio: 1; place-items: center; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 9px; background: repeating-linear-gradient(135deg, #17181b 0 8px, #1c1d21 8px 16px); color: var(--quiet); font-size: 9px; text-align: center; }
+    .skybox-face-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .skybox-face-preview img[hidden] { display: none; }
+    .skybox-orbit { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #111215; }
+    .skybox-orbit-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .skybox-orbit-heading b { display: block; font-size: 11px; }
+    .skybox-orbit-heading p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .skybox-orbit-stage { position: relative; min-height: 300px; margin-top: 11px; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 10px; background: radial-gradient(ellipse at 50% 42%, #30343c 0, #181a20 48%, #101114 100%); perspective: 760px; touch-action: none; user-select: none; cursor: grab; }
+    .skybox-orbit-stage[data-dragging="true"] { cursor: grabbing; }
+    .skybox-cube { --cube-size: clamp(150px, 42vw, 220px); --cube-half: calc(var(--cube-size) / 2); position: absolute; top: 50%; left: 50%; width: var(--cube-size); height: var(--cube-size); transform: translate3d(-50%, -50%, 0) rotateX(-28deg) rotateY(-38deg); transform-style: preserve-3d; transition: transform 110ms ease-out; }
+    .skybox-cube-face { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(238, 241, 255, .36); background: linear-gradient(145deg, #313a4a, #1d222d 58%, #13161e); box-shadow: inset 0 0 32px rgba(8, 10, 15, .32); backface-visibility: hidden; }
+    .skybox-cube-face[data-sky-cube-face="Ft"] { transform: translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Bk"] { transform: rotateY(180deg) translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Rt"] { transform: rotateY(90deg) translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Lf"] { transform: rotateY(-90deg) translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Up"] { transform: rotateX(90deg) translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Dn"] { transform: rotateX(-90deg) translateZ(var(--cube-half)); }
+    .skybox-cube-face[data-sky-cube-face="Bk"], .skybox-cube-face[data-sky-cube-face="Rt"] { filter: brightness(.72); }
+    .skybox-cube-face[data-sky-cube-face="Lf"], .skybox-cube-face[data-sky-cube-face="Dn"] { filter: brightness(.84); }
+    .skybox-cube-face[data-sky-cube-face="Up"] { filter: brightness(1.08); }
+    .skybox-cube-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .skybox-cube-face img[hidden] { display: none; }
+    .skybox-cube-face-label { color: rgba(235, 238, 246, .78); font-size: 10px; font-weight: 650; }
+    .skybox-cube-face.has-image .skybox-cube-face-label { display: none; }
+    .skybox-orbit-reset { flex: 0 0 auto; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #202126; color: var(--text); cursor: pointer; font-size: 10px; }
+    .skybox-orbit-reset:focus-visible, .skybox-orbit-stage:focus-visible { outline: 2px solid #cbd4e4; outline-offset: 3px; }
+    @media (prefers-reduced-motion: reduce) { .skybox-cube { transition: none; } }
+    .skybox-face-card input, .skybox-name-input, .sky-prompt-controls select, .sky-prompt-text { width: 100%; border: 1px solid var(--line); border-radius: 9px; background: #0e0f11; color: var(--text); }
+    .skybox-face-card input, .skybox-name-input, .sky-prompt-controls select { height: 37px; padding: 0 9px; font-size: 10px; }
+    .skybox-face-card input { margin-top: 8px; font-variant-numeric: tabular-nums; }
+    .skybox-name-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; margin-top: 15px; }
+    .skybox-name-field { min-width: 0; }
+    .skybox-name-field label, .sky-prompt-controls label { display: block; margin-bottom: 6px; color: #bcbec4; font-size: 10px; font-weight: 650; }
+    .skybox-name-input { height: 39px; padding: 0 10px; font-size: 11px; }
+    .skybox-result { margin-top: 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .skybox-result.success { color: #b7d9c2; }
+    .skybox-guide { padding: 17px; }
+    .skybox-guide .primary, .skybox-guide .secondary { width: 100%; margin-top: 11px; }
+    .skybox-step { padding: 12px 0; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .skybox-step:first-of-type { margin-top: 12px; }
+    .skybox-step b { display: block; margin-bottom: 3px; color: var(--text); font-size: 10px; }
+    .sky-prompt-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sky-prompt-controls select { height: 39px; }
+    .sky-prompt-text { min-height: 190px; margin-top: 14px; padding: 12px; resize: vertical; font-size: 11px; line-height: 1.6; }
+    .sky-prompt-note { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
     .quota-panel { margin-bottom: 15px; padding: 14px; border: 1px solid #515258; border-radius: 12px; background: linear-gradient(135deg, #24252a, #141518); }
     .quota-panel-label { color: var(--muted); font-size: 10px; }
     .quota-panel-value { margin-top: 6px; font-size: 17px; font-weight: 740; font-variant-numeric: tabular-nums; }
@@ -515,13 +571,18 @@
       .membership-stats { gap: 7px; }
       .membership-stat { min-height: 105px; padding: 12px; }
       .membership-stat-value { font-size: 25px; }
-      .quick-actions { gap: 7px; }
-      .quick-actions-label { width: 100%; }
+      .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
       .surface-pad { padding: 18px; }
       .upload-grid { grid-template-columns: 1fr; gap: 12px; }
       .upload-panel { padding: 16px; }
       .dropzone { min-height: 205px; }
       .upload-aside { padding: 17px; }
+      .skybox-layout { grid-template-columns: 1fr; }
+      .skybox-panel { padding: 15px; }
+      .skybox-face-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .skybox-name-row { grid-template-columns: 1fr; }
+      .skybox-name-row .primary { width: 100%; }
+      .sky-prompt-controls { grid-template-columns: 1fr; }
       .setup-card { padding: 17px; }
       .credential-grid { grid-template-columns: 1fr; gap: 0; }
       .credential-actions { align-items: stretch; flex-direction: column; }
@@ -533,13 +594,13 @@
         z-index: 6;
         inset: auto 0 0;
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         padding: 7px 7px max(8px, env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
         background: rgba(20,21,24,.97);
         backdrop-filter: blur(18px);
       }
-      .mobile-nav .nav-item { min-height: 49px; flex-direction: column; justify-content: center; gap: 3px; padding: 4px 2px; border-radius: 10px; font-size: 9px; }
+      .mobile-nav .nav-item { min-width: 0; min-height: 49px; flex-direction: column; justify-content: center; gap: 3px; padding: 4px 2px; border-radius: 10px; font-size: 8px; }
       .mobile-nav .nav-icon { font-size: 15px; }
       .mobile-nav .nav-lock { display: none; }
       .toast { right: 16px; bottom: 81px; }
@@ -576,6 +637,7 @@
       <nav class="nav-list" aria-label="Navigasi utama">
         <button class="nav-item active" data-tab="home"><span class="nav-icon">⌂</span>Beranda</button>
         <button class="nav-item" data-tab="upload"><span class="nav-icon">↥</span>Upload<span class="nav-lock" data-lock>⌑</span></button>
+        <button class="nav-item" data-tab="skybox"><span class="nav-icon">☼</span>Skybox</button>
         <button class="nav-item" data-tab="setup"><span class="nav-icon">⌘</span>Setup Roblox<span class="nav-lock" data-lock>⌑</span></button>
         <button class="nav-item" data-tab="history"><span class="nav-icon">◷</span>Riwayat<span class="nav-lock" data-lock>⌑</span></button>
       </nav>
@@ -647,9 +709,31 @@
           </section>
           <div class="quick-actions" aria-label="Aksi cepat">
             <span class="quick-actions-label">Aksi cepat</span>
-            <button class="secondary" type="button" data-go="upload">Upload asset</button>
-            <button class="secondary" type="button" data-go="setup">Setup Roblox</button>
-            <button class="secondary" id="quickBuyVip" type="button">Beli VIP</button>
+            <button class="quick-action-card" type="button" data-go="upload">
+              <span class="quick-action-icon" aria-hidden="true">↥</span>
+              <span class="quick-action-title">Upload asset</span>
+              <span class="quick-action-hint">Audio, gambar, dan model</span>
+            </button>
+            <button class="quick-action-card" type="button" data-go="setup">
+              <span class="quick-action-icon" aria-hidden="true">⌘</span>
+              <span class="quick-action-title">Setup Roblox</span>
+              <span class="quick-action-hint">Atur koneksi Open Cloud</span>
+            </button>
+            <button class="quick-action-card" type="button" id="quickBuyVip">
+              <span class="quick-action-icon" aria-hidden="true">◇</span>
+              <span class="quick-action-title">Beli VIP</span>
+              <span class="quick-action-hint">Lihat pilihan paket</span>
+            </button>
+            <button class="quick-action-card" type="button" data-go="skybox">
+              <span class="quick-action-icon" aria-hidden="true">☼</span>
+              <span class="quick-action-title">Skybox</span>
+              <span class="quick-action-hint">Rakit file enam sisi</span>
+            </button>
+            <button class="quick-action-card" type="button" data-open-sky-prompts>
+              <span class="quick-action-icon" aria-hidden="true">✦</span>
+              <span class="quick-action-title">Prompt GPT</span>
+              <span class="quick-action-hint">Pakai preset gambar sky</span>
+            </button>
           </div>
           <div class="dashboard-lower">
             <section class="surface surface-pad">
@@ -825,6 +909,88 @@
             <div id="historyContainer"></div>
           </section>
         </section>
+
+        <section class="page" id="page-skybox">
+          <div class="page-heading">
+            <div class="eyebrow">TOOLS WORKSPACE</div>
+            <h1>Skybox generator</h1>
+            <p class="page-intro">Masukkan enam ID gambar Roblox untuk membuat file Sky yang siap diimpor ke Lighting.</p>
+          </div>
+          <div class="skybox-layout">
+            <section class="surface skybox-panel">
+              <div class="surface-title">Enam sisi langit</div>
+              <div class="surface-subtitle">Gunakan ID gambar yang sudah kamu unggah atau punya izin untuk digunakan. Tempel angka Asset ID atau tautan Roblox.</div>
+              <div class="skybox-face-grid">
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Depan <code>SkyboxFt</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Ft"><img alt="Pratinjau gambar sisi depan" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi depan" data-sky-id="Ft">
+                </label>
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Belakang <code>SkyboxBk</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Bk"><img alt="Pratinjau gambar sisi belakang" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi belakang" data-sky-id="Bk">
+                </label>
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Kiri <code>SkyboxLf</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Lf"><img alt="Pratinjau gambar sisi kiri" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi kiri" data-sky-id="Lf">
+                </label>
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Kanan <code>SkyboxRt</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Rt"><img alt="Pratinjau gambar sisi kanan" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi kanan" data-sky-id="Rt">
+                </label>
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Atas <code>SkyboxUp</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Up"><img alt="Pratinjau gambar sisi atas" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi atas" data-sky-id="Up">
+                </label>
+                <label class="skybox-face-card">
+                  <span class="skybox-face-heading">Bawah <code>SkyboxDn</code></span>
+                  <span class="skybox-face-preview" data-sky-preview="Dn"><img alt="Pratinjau gambar sisi bawah" hidden><span>Pratinjau gambar</span></span>
+                  <input type="text" inputmode="numeric" autocomplete="off" maxlength="160" placeholder="Asset ID gambar" aria-label="Asset ID gambar sisi bawah" data-sky-id="Dn">
+                </label>
+              </div>
+              <section class="skybox-orbit" aria-labelledby="skyboxOrbitTitle">
+                <div class="skybox-orbit-heading">
+                  <div>
+                    <b id="skyboxOrbitTitle">Pratinjau Sky 3D</b>
+                    <p>Seret atau pakai tombol panah untuk memutar.</p>
+                  </div>
+                  <button class="skybox-orbit-reset" id="resetSkyOrbit" type="button">Atur ulang</button>
+                </div>
+                <div class="skybox-orbit-stage" id="skyboxOrbitStage" role="application" aria-label="Pratinjau Skybox 3D yang dapat diputar" tabindex="0">
+                  <div class="skybox-cube" id="skyboxCube" aria-hidden="true">
+                    <div class="skybox-cube-face" data-sky-cube-face="Ft"><img alt="" hidden><span class="skybox-cube-face-label">Depan</span></div>
+                    <div class="skybox-cube-face" data-sky-cube-face="Bk"><img alt="" hidden><span class="skybox-cube-face-label">Belakang</span></div>
+                    <div class="skybox-cube-face" data-sky-cube-face="Lf"><img alt="" hidden><span class="skybox-cube-face-label">Kiri</span></div>
+                    <div class="skybox-cube-face" data-sky-cube-face="Rt"><img alt="" hidden><span class="skybox-cube-face-label">Kanan</span></div>
+                    <div class="skybox-cube-face" data-sky-cube-face="Up"><img alt="" hidden><span class="skybox-cube-face-label">Atas</span></div>
+                    <div class="skybox-cube-face" data-sky-cube-face="Dn"><img alt="" hidden><span class="skybox-cube-face-label">Bawah</span></div>
+                  </div>
+                </div>
+              </section>
+              <div class="skybox-name-row">
+                <div class="skybox-name-field">
+                  <label for="skyboxName">Nama Sky</label>
+                  <input class="skybox-name-input" id="skyboxName" type="text" maxlength="50" value="My Skybox">
+                </div>
+                <button class="primary" id="generateSkyFile" type="button">Unduh Sky (.rbxmx)</button>
+              </div>
+              <div class="skybox-result" id="skyboxResult" role="status" aria-live="polite"></div>
+            </section>
+            <aside class="surface skybox-guide">
+              <div class="surface-title">Cara pakai</div>
+              <div class="skybox-step"><b>Upload enam gambar</b>Pilih Decal di Upload, lalu unggah gambar skybox satu per satu atau dalam antrean.</div>
+              <div class="skybox-step"><b>Tempel keenam Asset ID</b>Salin ID dari riwayat upload, lalu isi sisi yang sesuai. Preview membantu mengecek gambar.</div>
+              <div class="skybox-step"><b>Unduh dan impor</b>Impor file ke Lighting melalui Roblox Studio → Insert from File.</div>
+              <button class="secondary" id="openSkyPrompts" type="button">Buka preset prompt GPT</button>
+              <button class="secondary" id="uploadSkyFaces" type="button">Upload gambar skybox</button>
+              <p class="sky-prompt-note">File `.rbxmx` ini berisi konfigurasi Sky dengan enam referensi gambar. File tidak mengunggah gambar atau membuat Model ID.</p>
+            </aside>
+          </div>
+        </section>
       </main>
     </div>
   </div>
@@ -832,6 +998,7 @@
   <nav class="mobile-nav" aria-label="Navigasi bawah">
     <button class="nav-item active" data-tab="home"><span class="nav-icon">⌂</span>Beranda</button>
     <button class="nav-item" data-tab="upload"><span class="nav-icon">↥</span>Upload<span class="nav-lock" data-lock>⌑</span></button>
+    <button class="nav-item" data-tab="skybox"><span class="nav-icon">☼</span>Skybox</button>
     <button class="nav-item" data-tab="setup"><span class="nav-icon">⌘</span>Setup<span class="nav-lock" data-lock>⌑</span></button>
     <button class="nav-item" data-tab="history"><span class="nav-icon">◷</span>Riwayat<span class="nav-lock" data-lock>⌑</span></button>
   </nav>
@@ -861,6 +1028,30 @@
       </button>
     </div>
     <div class="modal-actions"><button class="secondary" id="closeVipDialog" type="button">Tutup</button></div>
+  </dialog>
+  <dialog class="modal" id="skyPromptDialog" aria-labelledby="skyPromptTitle">
+    <h2 id="skyPromptTitle">Preset prompt skybox</h2>
+    <p class="modal-copy">Pilih suasana dan sisi. Salin prompt ini ke GPT untuk membuat gambar satu per satu dengan gaya yang konsisten.</p>
+    <div class="sky-prompt-controls">
+      <div>
+        <label for="skyPromptPreset">Suasana</label>
+        <select id="skyPromptPreset"></select>
+      </div>
+      <div>
+        <label for="skyPromptFace">Sisi yang dibuat</label>
+        <select id="skyPromptFace">
+          <option value="Ft">Depan · Ft</option>
+          <option value="Bk">Belakang · Bk</option>
+          <option value="Lf">Kiri · Lf</option>
+          <option value="Rt">Kanan · Rt</option>
+          <option value="Up">Atas · Up</option>
+          <option value="Dn">Bawah · Dn</option>
+        </select>
+      </div>
+    </div>
+    <textarea class="sky-prompt-text" id="skyPromptText" readonly aria-label="Prompt untuk disalin"></textarea>
+    <p class="sky-prompt-note">Buat sisi lain dalam percakapan GPT yang sama agar warna, awan, dan pencahayaan tetap seragam.</p>
+    <div class="modal-actions"><button class="secondary" id="closeSkyPrompts" type="button">Tutup</button><button class="primary" id="copySkyPrompt" type="button">Salin prompt</button></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

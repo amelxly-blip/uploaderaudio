@@ -1,11 +1,18 @@
 import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
 import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
+import {
+  buildSkyboxPrompt,
+  buildSkyboxRbxmx,
+  normalizeSkyAssetId,
+  SKYBOX_FACES,
+  SKYBOX_PROMPTS,
+} from "./skybox.js";
 import { getNextQuotaResetAt } from "../supabase/functions/_shared/quota-window.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
-const tabs = ["home", "upload", "setup", "history"];
+const tabs = ["home", "upload", "skybox", "setup", "history"];
 const VIP_WHATSAPP_NUMBER = "6282174905591";
 const MAX_UPLOAD_QUEUE_SIZE = 10;
 const assetTypes = {
@@ -61,6 +68,11 @@ let toastTimer;
 let history = [];
 let dashboard = null;
 let publicStats = null;
+const skyPreviewTimers = new Map();
+const skyPreviewVersions = new Map();
+const skyPreviewObjectUrls = new Map();
+let skyOrbitRotationX = -28;
+let skyOrbitRotationY = -38;
 
 function createQueueItem(file, assetType) {
   const extension = file.name.split(".").pop().toLowerCase();
@@ -285,15 +297,142 @@ function setAssetType(assetType) {
 
 function navigate(tab) {
   if (!tabs.includes(tab)) return;
-  if (tab !== "home" && !me.authenticated) {
+  if (tab !== "home" && tab !== "skybox" && !me.authenticated) {
     showToast("Masuk dengan Discord dulu untuk membuka bagian ini.");
     return;
   }
   $$(".page").forEach((page) => page.classList.toggle("active", page.id === `page-${tab}`));
   $$("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
-  $("#topbarLabel").textContent = `AUDIO WORKSPACE / ${({ home: "BERANDA", upload: "UPLOAD", setup: "SETUP ROBLOX", history: "RIWAYAT" })[tab]}`;
+  $("#topbarLabel").textContent = `AUDIO WORKSPACE / ${({ home: "BERANDA", upload: "UPLOAD", skybox: "SKYBOX", setup: "SETUP ROBLOX", history: "RIWAYAT" })[tab]}`;
   if (tab === "history") void loadHistory();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderSkyPrompt() {
+  $("#skyPromptText").value = buildSkyboxPrompt($("#skyPromptPreset").value, $("#skyPromptFace").value);
+}
+
+function populateSkyPromptPresets() {
+  const select = $("#skyPromptPreset");
+  select.replaceChildren(...SKYBOX_PROMPTS.map(({ id, name, description }) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = name;
+    option.title = description;
+    return option;
+  }));
+}
+
+function openSkyPromptDialog() {
+  renderSkyPrompt();
+  $("#skyPromptDialog").showModal();
+}
+
+function setSkyPreviewMessage(faceKey, message) {
+  const preview = $(`[data-sky-preview="${faceKey}"]`);
+  const image = preview.querySelector("img");
+  const cubeFace = $(`[data-sky-cube-face="${faceKey}"]`);
+  const cubeImage = cubeFace.querySelector("img");
+  const objectUrl = skyPreviewObjectUrls.get(faceKey);
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  skyPreviewObjectUrls.delete(faceKey);
+  image.hidden = true;
+  image.removeAttribute("src");
+  cubeImage.hidden = true;
+  cubeImage.removeAttribute("src");
+  cubeFace.classList.remove("has-image");
+  preview.querySelector("span").textContent = message;
+}
+
+async function loadSkyPreview(faceKey, assetId, version) {
+  const preview = $(`[data-sky-preview="${faceKey}"]`);
+  const image = preview.querySelector("img");
+  const cubeFace = $(`[data-sky-cube-face="${faceKey}"]`);
+  const cubeImage = cubeFace.querySelector("img");
+  const placeholder = preview.querySelector("span");
+
+  try {
+    const response = await fetch(`/api/roblox-thumbnail?assetId=${encodeURIComponent(assetId)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Thumbnail Roblox gagal dimuat (${response.status}).`);
+    const blob = await response.blob();
+    if (!blob.type.toLowerCase().startsWith("image/")) {
+      throw new Error("Roblox tidak mengembalikan file gambar untuk pratinjau.");
+    }
+    if (skyPreviewVersions.get(faceKey) !== version) return;
+    const objectUrl = URL.createObjectURL(blob);
+    skyPreviewObjectUrls.set(faceKey, objectUrl);
+    const handlePreviewError = () => {
+      if (skyPreviewVersions.get(faceKey) !== version) return;
+      console.error("Could not display a Roblox skybox image preview.");
+      setSkyPreviewMessage(faceKey, "Preview tidak tersedia");
+    };
+    image.onerror = handlePreviewError;
+    cubeImage.onerror = handlePreviewError;
+    image.src = objectUrl;
+    cubeImage.src = objectUrl;
+    image.hidden = false;
+    cubeImage.hidden = false;
+    cubeFace.classList.add("has-image");
+    placeholder.textContent = "";
+  } catch (error) {
+    if (skyPreviewVersions.get(faceKey) !== version) return;
+    console.error("Could not load a Roblox skybox image preview.", error);
+    setSkyPreviewMessage(faceKey, "Preview tidak tersedia");
+  }
+}
+
+function scheduleSkyPreview(faceKey, value) {
+  clearTimeout(skyPreviewTimers.get(faceKey));
+  const version = (skyPreviewVersions.get(faceKey) || 0) + 1;
+  skyPreviewVersions.set(faceKey, version);
+  const assetId = normalizeSkyAssetId(value);
+  if (!assetId) {
+    setSkyPreviewMessage(faceKey, "Pratinjau gambar");
+    return;
+  }
+  setSkyPreviewMessage(faceKey, "Memuat preview...");
+  skyPreviewTimers.set(faceKey, setTimeout(() => {
+    void loadSkyPreview(faceKey, assetId, version);
+  }, 350));
+}
+
+function renderSkyCube() {
+  $("#skyboxCube").style.transform =
+    `translate3d(-50%, -50%, 0) rotateX(${skyOrbitRotationX}deg) rotateY(${skyOrbitRotationY}deg)`;
+}
+
+function resetSkyCube() {
+  skyOrbitRotationX = -28;
+  skyOrbitRotationY = -38;
+  renderSkyCube();
+}
+
+function downloadSkyboxFile() {
+  const result = $("#skyboxResult");
+  const faceIds = Object.fromEntries(SKYBOX_FACES.map(({ key }) => [
+    key,
+    $(`[data-sky-id="${key}"]`).value,
+  ]));
+  try {
+    const name = $("#skyboxName").value.trim();
+    const xml = buildSkyboxRbxmx(name, faceIds);
+    const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const filename = name.normalize("NFKD").replace(/[^\w-]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) || "Skybox";
+    link.href = url;
+    link.download = `${filename}.rbxmx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    result.className = "skybox-result success";
+    result.textContent = `${filename}.rbxmx diunduh. Di Studio, klik kanan Lighting lalu pilih Insert from File.`;
+  } catch (error) {
+    result.className = "skybox-result";
+    result.textContent = error.message;
+    showToast(error.message);
+  }
 }
 
 function updateIdentity() {
@@ -1062,6 +1201,71 @@ function openVipDialog() {
 $("#buyVipButton").addEventListener("click", openVipDialog);
 $("#quickBuyVip").addEventListener("click", openVipDialog);
 $("#closeVipDialog").addEventListener("click", () => $("#vipDialog").close());
+$$("[data-open-sky-prompts]").forEach((button) => button.addEventListener("click", openSkyPromptDialog));
+populateSkyPromptPresets();
+$("#openSkyPrompts").addEventListener("click", openSkyPromptDialog);
+$("#closeSkyPrompts").addEventListener("click", () => $("#skyPromptDialog").close());
+$("#skyPromptPreset").addEventListener("change", renderSkyPrompt);
+$("#skyPromptFace").addEventListener("change", renderSkyPrompt);
+$("#copySkyPrompt").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#skyPromptText").value);
+    showToast("Prompt skybox disalin.");
+  } catch (error) {
+    console.error("Could not copy the skybox prompt.", error);
+    showToast("Prompt tidak bisa disalin otomatis. Pilih teks prompt lalu salin manual.");
+  }
+});
+$$("[data-sky-id]").forEach((input) => {
+  input.addEventListener("input", () => scheduleSkyPreview(input.dataset.skyId, input.value));
+});
+const skyboxOrbitStage = $("#skyboxOrbitStage");
+let skyOrbitPointerId = null;
+let skyOrbitPointerX = 0;
+let skyOrbitPointerY = 0;
+skyboxOrbitStage.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  skyOrbitPointerId = event.pointerId;
+  skyOrbitPointerX = event.clientX;
+  skyOrbitPointerY = event.clientY;
+  skyboxOrbitStage.dataset.dragging = "true";
+  skyboxOrbitStage.setPointerCapture(event.pointerId);
+});
+skyboxOrbitStage.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== skyOrbitPointerId) return;
+  skyOrbitRotationY += (event.clientX - skyOrbitPointerX) * 0.45;
+  skyOrbitRotationX = Math.max(-80, Math.min(80, skyOrbitRotationX + (event.clientY - skyOrbitPointerY) * 0.45));
+  skyOrbitPointerX = event.clientX;
+  skyOrbitPointerY = event.clientY;
+  renderSkyCube();
+});
+const finishSkyOrbitDrag = (event) => {
+  if (event.pointerId !== skyOrbitPointerId) return;
+  skyOrbitPointerId = null;
+  delete skyboxOrbitStage.dataset.dragging;
+};
+skyboxOrbitStage.addEventListener("pointerup", finishSkyOrbitDrag);
+skyboxOrbitStage.addEventListener("pointercancel", finishSkyOrbitDrag);
+skyboxOrbitStage.addEventListener("keydown", (event) => {
+  const step = event.shiftKey ? 20 : 10;
+  if (event.key === "ArrowLeft") skyOrbitRotationY -= step;
+  else if (event.key === "ArrowRight") skyOrbitRotationY += step;
+  else if (event.key === "ArrowUp") skyOrbitRotationX = Math.max(-80, skyOrbitRotationX - step);
+  else if (event.key === "ArrowDown") skyOrbitRotationX = Math.min(80, skyOrbitRotationX + step);
+  else return;
+  event.preventDefault();
+  renderSkyCube();
+});
+$("#resetSkyOrbit").addEventListener("click", resetSkyCube);
+$("#generateSkyFile").addEventListener("click", downloadSkyboxFile);
+$("#uploadSkyFaces").addEventListener("click", () => {
+  if (!me.authenticated) {
+    showToast("Masuk dengan Discord dulu untuk mengunggah gambar.");
+    return;
+  }
+  setAssetType("Decal");
+  navigate("upload");
+});
 $$("[data-vip-days]").forEach((button) => {
   button.addEventListener("click", () => {
     const days = Number(button.dataset.vipDays);
