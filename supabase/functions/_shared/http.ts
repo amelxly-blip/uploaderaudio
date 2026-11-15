@@ -231,7 +231,7 @@ export function robloxError(status: number): HttpResponseError {
     return new HttpResponseError(429, "Kuota atau batas permintaan Roblox tercapai. Coba lagi setelah kuota tersedia.");
   }
   if (status === 400 || status === 413 || status === 415) {
-    return new HttpResponseError(422, "Roblox menolak file atau detail asset. Periksa format dan panduan audio.");
+    return new HttpResponseError(422, "Roblox menolak file atau detail asset. Periksa format dan panduan upload.");
   }
   return new HttpResponseError(502, "Roblox belum menyelesaikan permintaan. Periksa Creator Dashboard.");
 }

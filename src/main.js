@@ -2,8 +2,9 @@ import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-proc
 import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
 import {
-  buildSkyboxPrompt,
+  buildSkyboxAtlasPrompt,
   buildSkyboxRbxmx,
+  getSkyboxAtlasCells,
   normalizeSkyAssetId,
   SKYBOX_FACES,
   SKYBOX_PROMPTS,
@@ -15,6 +16,8 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const tabs = ["home", "upload", "skybox", "setup", "history"];
 const VIP_WHATSAPP_NUMBER = "6282174905591";
 const MAX_UPLOAD_QUEUE_SIZE = 10;
+const MAX_SKYBOX_ATLAS_SIZE = 20 * 1024 * 1024;
+const MAX_SKYBOX_BATCH_SIZE = 20 * 1024 * 1024;
 const assetTypes = {
   Audio: {
     title: "Upload audio",
@@ -71,8 +74,13 @@ let publicStats = null;
 const skyPreviewTimers = new Map();
 const skyPreviewVersions = new Map();
 const skyPreviewObjectUrls = new Map();
-let skyOrbitRotationX = -28;
-let skyOrbitRotationY = -38;
+let skyAtlasFiles = [];
+let skyboxBatch = null;
+let skyboxBusy = false;
+let pendingSkyboxBatch = null;
+let skyRenderer = null;
+let skyOrbitRotationX = 0;
+let skyOrbitRotationY = 0;
 
 function createQueueItem(file, assetType) {
   const extension = file.name.split(".").pop().toLowerCase();
@@ -303,13 +311,15 @@ function navigate(tab) {
   }
   $$(".page").forEach((page) => page.classList.toggle("active", page.id === `page-${tab}`));
   $$("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+  document.body.classList.toggle("skybox-wide", tab === "skybox");
+  if (tab === "skybox") resizeSkyboxScene();
   $("#topbarLabel").textContent = `AUDIO WORKSPACE / ${({ home: "BERANDA", upload: "UPLOAD", skybox: "SKYBOX", setup: "SETUP ROBLOX", history: "RIWAYAT" })[tab]}`;
   if (tab === "history") void loadHistory();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderSkyPrompt() {
-  $("#skyPromptText").value = buildSkyboxPrompt($("#skyPromptPreset").value, $("#skyPromptFace").value);
+  $("#skyPromptText").value = buildSkyboxAtlasPrompt($("#skyPromptPreset").value);
 }
 
 function populateSkyPromptPresets() {
@@ -328,29 +338,260 @@ function openSkyPromptDialog() {
   $("#skyPromptDialog").showModal();
 }
 
+function drawSkyboxScene() {
+  if (!skyRenderer) return;
+  const { gl, canvas, uniforms, program } = skyRenderer;
+  gl.useProgram(program);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
+  gl.uniform1f(uniforms.yaw, skyOrbitRotationY * Math.PI / 180);
+  gl.uniform1f(uniforms.pitch, skyOrbitRotationX * Math.PI / 180);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function resizeSkyboxScene() {
+  if (!skyRenderer) return;
+  const { canvas, gl } = skyRenderer;
+  const bounds = canvas.getBoundingClientRect();
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(bounds.width * ratio));
+  const height = Math.max(1, Math.round(bounds.height * ratio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+    gl.viewport(0, 0, width, height);
+  }
+  drawSkyboxScene();
+}
+
+function initializeSkyboxScene() {
+  const canvas = $("#skyboxPreviewCanvas");
+  const fallback = $("#skyboxPreviewFallback");
+  try {
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      powerPreference: "low-power",
+    });
+    if (!gl) throw new Error("WebGL is unavailable.");
+
+    const vertexSource = `
+      attribute vec2 aPosition;
+      varying vec2 vUv;
+      void main() {
+        vUv = aPosition * 0.5 + 0.5;
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+      }
+    `;
+    const fragmentSource = `
+      precision highp float;
+      varying vec2 vUv;
+      uniform vec2 uResolution;
+      uniform float uYaw;
+      uniform float uPitch;
+      uniform sampler2D uFt;
+      uniform sampler2D uBk;
+      uniform sampler2D uLf;
+      uniform sampler2D uRt;
+      uniform sampler2D uUp;
+      uniform sampler2D uDn;
+      void main() {
+        vec2 screen = vUv * 2.0 - 1.0;
+        screen.x *= uResolution.x / uResolution.y;
+        screen *= 0.78;
+        vec3 ray = normalize(vec3(screen.x, screen.y, -1.0));
+        float cp = cos(uPitch);
+        float sp = sin(uPitch);
+        ray = vec3(ray.x, ray.y * cp - ray.z * sp, ray.y * sp + ray.z * cp);
+        float cy = cos(uYaw);
+        float sy = sin(uYaw);
+        ray = vec3(ray.x * cy - ray.z * sy, ray.y, ray.x * sy + ray.z * cy);
+        float ax = abs(ray.x);
+        float ay = abs(ray.y);
+        float az = abs(ray.z);
+        vec2 uv;
+        vec3 color;
+        if (az >= ax && az >= ay) {
+          if (ray.z < 0.0) {
+            uv = vec2(0.5 + ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
+            color = texture2D(uFt, uv).rgb;
+          } else {
+            uv = vec2(0.5 - ray.x / (2.0 * az), 0.5 + ray.y / (2.0 * az));
+            color = texture2D(uBk, uv).rgb;
+          }
+        } else if (ax >= ay) {
+          if (ray.x > 0.0) {
+            uv = vec2(0.5 + ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
+            color = texture2D(uRt, uv).rgb;
+          } else {
+            uv = vec2(0.5 - ray.z / (2.0 * ax), 0.5 + ray.y / (2.0 * ax));
+            color = texture2D(uLf, uv).rgb;
+          }
+        } else if (ray.y > 0.0) {
+          uv = vec2(0.5 + ray.x / (2.0 * ay), 0.5 - ray.z / (2.0 * ay));
+          color = texture2D(uUp, uv).rgb;
+        } else {
+          uv = vec2(0.5 + ray.x / (2.0 * ay), 0.5 + ray.z / (2.0 * ay));
+          color = texture2D(uDn, uv).rgb;
+        }
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+    const compile = (type, source) => {
+      const shader = gl.createShader(type);
+      if (!shader) throw new Error("Could not create a WebGL shader.");
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(message || "Could not compile a WebGL shader.");
+      }
+      return shader;
+    };
+    const vertexShader = compile(gl.VERTEX_SHADER, vertexSource);
+    const fragmentShader = compile(gl.FRAGMENT_SHADER, fragmentSource);
+    const program = gl.createProgram();
+    if (!program) throw new Error("Could not create the WebGL preview program.");
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program) || "Could not link the WebGL preview program.");
+    }
+
+    const buffer = gl.createBuffer();
+    if (!buffer) throw new Error("Could not create the WebGL preview buffer.");
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+      gl.STATIC_DRAW,
+    );
+    const position = gl.getAttribLocation(program, "aPosition");
+    gl.enableVertexAttribArray(position);
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+    const uniforms = {
+      resolution: gl.getUniformLocation(program, "uResolution"),
+      yaw: gl.getUniformLocation(program, "uYaw"),
+      pitch: gl.getUniformLocation(program, "uPitch"),
+    };
+    const textures = new Map();
+    SKYBOX_FACES.forEach((face, index) => {
+      const texture = gl.createTexture();
+      if (!texture) throw new Error("Could not create a WebGL face texture.");
+      textures.set(face.key, texture);
+      gl.activeTexture(gl.TEXTURE0 + index);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([34, 37, 43, 255]),
+      );
+      gl.uniform1i(gl.getUniformLocation(program, `u${face.key}`), index);
+    });
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    skyRenderer = { gl, canvas, program, uniforms, textures, textureSources: new Map() };
+    fallback.hidden = true;
+    canvas.hidden = false;
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(resizeSkyboxScene).observe(canvas);
+    } else {
+      window.addEventListener("resize", resizeSkyboxScene);
+    }
+    resizeSkyboxScene();
+  } catch (error) {
+    console.error("Could not initialize the immersive Skybox preview.", error);
+    canvas.hidden = true;
+    fallback.hidden = false;
+  }
+}
+
+function setSkyboxTexture(faceKey, source) {
+  if (!skyRenderer) return;
+  const { gl, textures, textureSources } = skyRenderer;
+  textureSources.set(faceKey, source || "");
+  const texture = textures.get(faceKey);
+  if (!texture) return;
+  gl.activeTexture(gl.TEXTURE0 + SKYBOX_FACES.findIndex((face) => face.key === faceKey));
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  if (!source) {
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([34, 37, 43, 255]),
+    );
+    drawSkyboxScene();
+    return;
+  }
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    if (textureSources.get(faceKey) !== source) return;
+    gl.activeTexture(gl.TEXTURE0 + SKYBOX_FACES.findIndex((face) => face.key === faceKey));
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    drawSkyboxScene();
+  };
+  image.onerror = () => {
+    if (textureSources.get(faceKey) === source) {
+      console.error("Could not load a Skybox texture for the 3D preview.");
+    }
+  };
+  image.src = source;
+}
+
 function setSkyPreviewMessage(faceKey, message) {
   const preview = $(`[data-sky-preview="${faceKey}"]`);
   const image = preview.querySelector("img");
-  const cubeFace = $(`[data-sky-cube-face="${faceKey}"]`);
-  const cubeImage = cubeFace.querySelector("img");
   const objectUrl = skyPreviewObjectUrls.get(faceKey);
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   skyPreviewObjectUrls.delete(faceKey);
+  image.onerror = null;
   image.hidden = true;
   image.removeAttribute("src");
-  cubeImage.hidden = true;
-  cubeImage.removeAttribute("src");
-  cubeFace.classList.remove("has-image");
+  setSkyboxTexture(faceKey, "");
   preview.querySelector("span").textContent = message;
+}
+
+function setSkyPreviewImage(faceKey, objectUrl) {
+  const preview = $(`[data-sky-preview="${faceKey}"]`);
+  const image = preview.querySelector("img");
+  const oldUrl = skyPreviewObjectUrls.get(faceKey);
+  if (oldUrl && oldUrl !== objectUrl) URL.revokeObjectURL(oldUrl);
+  skyPreviewObjectUrls.set(faceKey, objectUrl);
+  image.onerror = () => {
+    console.error("Could not display a Skybox face preview.");
+    setSkyPreviewMessage(faceKey, "Preview tidak tersedia");
+  };
+  image.src = objectUrl;
+  image.hidden = false;
+  preview.querySelector("span").textContent = "";
+  setSkyboxTexture(faceKey, objectUrl);
 }
 
 async function loadSkyPreview(faceKey, assetId, version) {
   const preview = $(`[data-sky-preview="${faceKey}"]`);
-  const image = preview.querySelector("img");
-  const cubeFace = $(`[data-sky-cube-face="${faceKey}"]`);
-  const cubeImage = cubeFace.querySelector("img");
-  const placeholder = preview.querySelector("span");
-
   try {
     const response = await fetch(`/api/roblox-thumbnail?assetId=${encodeURIComponent(assetId)}`, {
       cache: "no-store",
@@ -362,20 +603,13 @@ async function loadSkyPreview(faceKey, assetId, version) {
     }
     if (skyPreviewVersions.get(faceKey) !== version) return;
     const objectUrl = URL.createObjectURL(blob);
-    skyPreviewObjectUrls.set(faceKey, objectUrl);
-    const handlePreviewError = () => {
+    setSkyPreviewImage(faceKey, objectUrl);
+    const image = preview.querySelector("img");
+    image.onerror = () => {
       if (skyPreviewVersions.get(faceKey) !== version) return;
       console.error("Could not display a Roblox skybox image preview.");
       setSkyPreviewMessage(faceKey, "Preview tidak tersedia");
     };
-    image.onerror = handlePreviewError;
-    cubeImage.onerror = handlePreviewError;
-    image.src = objectUrl;
-    cubeImage.src = objectUrl;
-    image.hidden = false;
-    cubeImage.hidden = false;
-    cubeFace.classList.add("has-image");
-    placeholder.textContent = "";
   } catch (error) {
     if (skyPreviewVersions.get(faceKey) !== version) return;
     console.error("Could not load a Roblox skybox image preview.", error);
@@ -398,19 +632,397 @@ function scheduleSkyPreview(faceKey, value) {
   }, 350));
 }
 
-function renderSkyCube() {
-  $("#skyboxCube").style.transform =
-    `translate3d(-50%, -50%, 0) rotateX(${skyOrbitRotationX}deg) rotateY(${skyOrbitRotationY}deg)`;
+function resetSkyCube() {
+  skyOrbitRotationX = 0;
+  skyOrbitRotationY = 0;
+  drawSkyboxScene();
 }
 
-function resetSkyCube() {
-  skyOrbitRotationX = -28;
-  skyOrbitRotationY = -38;
-  renderSkyCube();
+function setSkyboxAtlasStatus(type, message) {
+  const status = $("#skyboxAtlasStatus");
+  status.className = `skybox-atlas-status${type ? ` ${type}` : ""}`;
+  status.textContent = message;
+}
+
+function setSkyFaceStatus(faceKey, state, message) {
+  const status = $(`[data-sky-status="${faceKey}"]`);
+  status.dataset.state = state;
+  status.textContent = message;
+}
+
+function updateSkyboxControls() {
+  const hasAtlas = skyAtlasFiles.length === SKYBOX_FACES.length;
+  const faceIds = Object.fromEntries(SKYBOX_FACES.map(({ key }) => [
+    key,
+    normalizeSkyAssetId($(`[data-sky-id="${key}"]`).value),
+  ]));
+  const allIdsAvailable = SKYBOX_FACES.every(({ key }) => Boolean(faceIds[key]));
+  const batchComplete = !skyboxBatch
+    || (skyboxBatch.status === "completed"
+      && SKYBOX_FACES.every(({ key }) => skyboxBatch.faces[key]?.status === "completed"));
+
+  $("#uploadSkyAtlas").disabled = skyboxBusy
+    || !hasAtlas
+    || !me.authenticated
+    || !me.robloxConfigured
+    || skyboxBatch?.status !== "ready";
+  $("#clearSkyAtlas").disabled = skyboxBusy || !hasAtlas;
+  $("#refreshSkyAtlasStatus").hidden = skyboxBusy
+    || !SKYBOX_FACES.some(({ key }) =>
+      skyboxBatch?.faces[key]?.status === "processing" && skyboxBatch.faces[key].uploadId
+    );
+  $("#generateSkyFile").disabled = skyboxBusy || !allIdsAvailable || !batchComplete;
+  $("#skyAtlasInput").disabled = skyboxBusy;
+  $$("[data-sky-id]").forEach((input) => { input.disabled = skyboxBusy; });
+}
+
+async function decodeAtlasImage(file) {
+  if ("createImageBitmap" in window) return createImageBitmap(file);
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function canvasToJpeg(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Browser gagal memproses salah satu gambar Sky."));
+    }, "image/jpeg", 0.9);
+  });
+}
+
+async function prepareSkyboxAtlas(file) {
+  if (skyboxBusy || !file) return;
+  $("#skyboxAtlasFileLabel").textContent = file.name;
+  if (file.size === 0 || file.size > MAX_SKYBOX_ATLAS_SIZE) {
+    setSkyboxAtlasStatus("error", "File atlas harus lebih dari 0 dan maksimal 20 MB.");
+    return;
+  }
+  if (!/\.(png|jpe?g|webp)$/i.test(file.name)) {
+    setSkyboxAtlasStatus("error", "Pilih atlas PNG, JPG, JPEG, atau WebP.");
+    return;
+  }
+
+  let source;
+  try {
+    source = await decodeAtlasImage(file);
+    const cells = getSkyboxAtlasCells(source.width, source.height);
+    const baseName = file.name.replace(/\.[^.]+$/, "")
+      .normalize("NFKD")
+      .replace(/[^\w-]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 32) || "Skybox";
+    const files = [];
+    let totalSize = 0;
+    for (const cell of cells) {
+      const canvas = document.createElement("canvas");
+      canvas.width = cell.width;
+      canvas.height = cell.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Browser tidak bisa membuka kanvas pemotong gambar.");
+      context.fillStyle = "#15171a";
+      context.fillRect(0, 0, cell.width, cell.height);
+      context.drawImage(
+        source,
+        cell.x,
+        cell.y,
+        cell.width,
+        cell.height,
+        0,
+        0,
+        cell.width,
+        cell.height,
+      );
+      const blob = await canvasToJpeg(canvas);
+      totalSize += blob.size;
+      if (totalSize > MAX_SKYBOX_BATCH_SIZE) {
+        throw new Error("Total enam gambar hasil potong melebihi 20 MB. Pilih atlas yang lebih ringan.");
+      }
+      files.push(new File([blob], `${baseName}_${cell.key}.jpg`, {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      }));
+    }
+
+    skyAtlasFiles.forEach((face) => {
+      const oldUrl = skyPreviewObjectUrls.get(face.key);
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+    });
+    skyAtlasFiles = files.map((file, index) => ({
+      file,
+      key: cells[index].key,
+      name: file.name,
+      size: file.size,
+    }));
+    skyboxBatch = {
+      status: "ready",
+      faces: Object.fromEntries(SKYBOX_FACES.map(({ key }) => [key, { status: "ready" }])),
+    };
+    $("#skyboxAtlasFileLabel").textContent = file.name;
+    for (const face of skyAtlasFiles) {
+      const objectUrl = URL.createObjectURL(face.file);
+      setSkyPreviewImage(face.key, objectUrl);
+      setSkyFaceStatus(face.key, "ready", `${formatSize(face.size)} · Siap ditinjau`);
+    }
+    setSkyboxAtlasStatus(
+      "success",
+      `Atlas ${source.width} × ${source.height} dipotong menjadi enam gambar (${formatSize(totalSize)} total).`,
+    );
+    $("#skyAtlasInput").value = "";
+    updateSkyboxControls();
+  } catch (error) {
+    setSkyboxAtlasStatus("error", error.message || "Atlas tidak bisa diproses.");
+  } finally {
+    if (source && typeof source.close === "function") source.close();
+  }
+}
+
+function clearSkyboxAtlas() {
+  if (skyboxBusy) return;
+  skyAtlasFiles.forEach((face) => {
+    const objectUrl = skyPreviewObjectUrls.get(face.key);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    skyPreviewObjectUrls.delete(face.key);
+  });
+  skyAtlasFiles = [];
+  skyboxBatch = null;
+  $("#skyAtlasInput").value = "";
+  $("#skyboxAtlasFileLabel").textContent = "Pilih atau taruh satu gambar atlas di sini";
+  setSkyboxAtlasStatus("", "");
+  for (const { key } of SKYBOX_FACES) {
+    const id = normalizeSkyAssetId($(`[data-sky-id="${key}"]`).value);
+    if (id) {
+      setSkyFaceStatus(key, "ready", `Asset ID ${id}`);
+      scheduleSkyPreview(key, id);
+    } else {
+      setSkyFaceStatus(key, "empty", "Menunggu gambar");
+      setSkyPreviewMessage(key, "Pratinjau gambar");
+    }
+  }
+  updateSkyboxControls();
+}
+
+function openSkyboxReview() {
+  if (!me.authenticated) {
+    showToast("Masuk dengan Discord dulu untuk mengunggah skybox.");
+    return;
+  }
+  if (!me.robloxConfigured) {
+    showToast("Atur Creator ID dan API key Roblox di Setup sebelum upload.");
+    return;
+  }
+  if (skyAtlasFiles.length !== SKYBOX_FACES.length || skyboxBatch?.status !== "ready") {
+    setSkyboxAtlasStatus("error", "Pilih dan periksa atlas sebelum memulai upload.");
+    return;
+  }
+  const name = $("#skyboxName").value.trim();
+  if (!name || name.length > 50) {
+    setSkyboxAtlasStatus("error", "Nama Sky harus berisi 1 sampai 50 karakter.");
+    $("#skyboxName").focus();
+    return;
+  }
+
+  pendingSkyboxBatch = { name, files: [...skyAtlasFiles] };
+  $("#reviewDialogTitle").textContent = "Konfirmasi upload skybox";
+  $("#reviewDialogCopy").textContent =
+    "Setiap sisi akan dibuat sebagai asset gambar baru di Roblox. Periksa file dan creator sebelum mengirim.";
+  $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
+  $("#reviewQueueList").innerHTML = pendingSkyboxBatch.files.map((face) => {
+    const definition = SKYBOX_FACES.find(({ key }) => key === face.key);
+    return `<div class="review-queue-item"><strong>${escapeHtml(definition.label)} · ${escapeHtml(face.name)}</strong><span>Decal · ${escapeHtml(formatSize(face.size))}</span></div>`;
+  }).join("");
+  $("#reviewCount").textContent =
+    "6 asset Roblox. Batch ini memakai 1 percobaan kuota aplikasi; kuota Roblox tetap berlaku.";
+  $("#reviewPlaybackSpeedRow").hidden = true;
+  $("#rightsConfirmText").textContent =
+    "Saya berhak mengunggah gambar ini dan paham Roblox dapat meninjau atau menolak keenam asset.";
+  $("#rightsConfirm").checked = false;
+  $("#confirmUpload").textContent = "Setujui dan upload 6 sisi";
+  $("#confirmUpload").disabled = true;
+  $("#confirmDialog").showModal();
+}
+
+function handleSkyboxStreamEvent(event, pollPromises) {
+  if (event.type === "complete") return;
+  if (event.type === "heartbeat") return;
+  if (event.type === "fatal") return;
+  const face = skyboxBatch?.faces[event.faceKey];
+  if (!face) throw new Error("Server mengembalikan sisi Sky yang tidak dikenal.");
+
+  if (event.status === "processing" && typeof event.uploadId === "string") {
+    face.status = "processing";
+    face.uploadId = event.uploadId;
+    setSkyFaceStatus(event.faceKey, "processing", "Diproses oleh Roblox");
+    updateSkyboxControls();
+    pollPromises.push(pollSkyboxFace(event.faceKey, event.uploadId));
+    return;
+  }
+  if (event.status === "failed" && typeof event.error === "string") {
+    face.status = "failed";
+    face.error = event.error;
+    setSkyFaceStatus(event.faceKey, "failed", event.error);
+    updateSkyboxControls();
+    return;
+  }
+  throw new Error("Server mengembalikan status sisi Sky yang tidak valid.");
+}
+
+async function pollSkyboxFace(faceKey, uploadId) {
+  const face = skyboxBatch?.faces[faceKey];
+  if (!face) return;
+  try {
+    const result = await pollOperation(uploadId, "Decal", false);
+    if (result.status === "completed") {
+      face.status = "completed";
+      face.assetId = result.assetId;
+      $(`[data-sky-id="${faceKey}"]`).value = result.assetId;
+      setSkyFaceStatus(faceKey, "completed", `Selesai · Asset ID ${result.assetId}`);
+    } else {
+      face.status = "processing";
+      setSkyFaceStatus(faceKey, "processing", "Masih diproses · gunakan Periksa status lagi");
+    }
+  } catch (error) {
+    face.status = "failed";
+    face.error = error.message || "Roblox menolak gambar ini.";
+    setSkyFaceStatus(faceKey, "failed", face.error);
+  }
+  updateSkyboxControls();
+}
+
+async function submitSkyboxBatch(batch) {
+  if (!batch || skyboxBusy) return;
+  skyboxBusy = true;
+  skyboxBatch.status = "uploading";
+  for (const { key } of SKYBOX_FACES) {
+    skyboxBatch.faces[key] = { status: "uploading" };
+    setSkyFaceStatus(key, "uploading", "Mengirim ke Roblox");
+  }
+  setSkyboxAtlasStatus("", "Mengirim keenam sisi ke creator yang dipilih...");
+  updateSkyboxControls();
+
+  const form = new FormData();
+  form.append("displayName", batch.name);
+  for (const face of batch.files) form.append(`face_${face.key}`, face.file, face.name);
+  const pollPromises = [];
+  let serverCompleted = false;
+  try {
+    const response = await fetch("/api/functions/roblox-skybox-upload", {
+      method: "POST",
+      body: form,
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(typeof data?.error === "string" ? data.error : "Batch upload ditolak oleh server.");
+    }
+    if (!response.headers.get("Content-Type")?.toLowerCase().includes("text/event-stream") || !response.body) {
+      throw new Error("Layanan upload tidak mengembalikan progress batch yang valid.");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      let separator = buffer.match(/\r?\n\r?\n/);
+      while (separator) {
+        const boundary = separator.index;
+        const message = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + separator[0].length);
+        const dataLine = message.split(/\r?\n/).find((line) => line.startsWith("data:"));
+        if (dataLine) {
+          const event = JSON.parse(dataLine.slice(5).trim());
+          if (event.type === "complete") serverCompleted = true;
+          if (event.type === "fatal") {
+            throw new Error(event.error || "Batch Skybox gagal diproses.");
+          }
+          handleSkyboxStreamEvent(event, pollPromises);
+        }
+        separator = buffer.match(/\r?\n\r?\n/);
+      }
+      if (done) break;
+    }
+    if (!serverCompleted) throw new Error("Progress batch terputus sebelum semua gambar selesai dikirim.");
+    await Promise.all(pollPromises);
+
+    const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
+    if (states.every((state) => state === "completed")) {
+      skyboxBatch.status = "completed";
+      setSkyboxAtlasStatus("success", "Keenam gambar selesai. Asset ID sudah terpasang dan file Sky siap diunduh.");
+    } else if (states.some((state) => state === "processing")) {
+      skyboxBatch.status = "processing";
+      setSkyboxAtlasStatus("", "Sebagian gambar masih diproses Roblox. Periksa status lagi sebelum mengunduh.");
+    } else {
+      skyboxBatch.status = "failed";
+      setSkyboxAtlasStatus("error", "Batch selesai dengan sisi gagal. Periksa status tiap sisi dan riwayat upload.");
+    }
+  } catch (error) {
+    await Promise.all(pollPromises);
+    if (skyboxBatch) {
+      for (const { key } of SKYBOX_FACES) {
+        const face = skyboxBatch.faces[key];
+        if (face?.status === "uploading") {
+          face.status = "unknown";
+          setSkyFaceStatus(key, "failed", "Status belum diterima · periksa riwayat sebelum upload ulang");
+        }
+      }
+      skyboxBatch.status = "failed";
+    }
+    setSkyboxAtlasStatus("error", error.message || "Batch Skybox gagal dikirim.");
+  } finally {
+    skyboxBusy = false;
+    updateSkyboxControls();
+    await loadHistory();
+    if (me.authenticated) {
+      try {
+        await loadDashboard();
+      } catch (error) {
+        if (error.status === 403) await clearBlockedSession();
+        else showToast(`Status kuota belum diperbarui: ${error.message}`);
+      }
+    }
+  }
+}
+
+async function refreshSkyboxStatus() {
+  if (skyboxBusy || !skyboxBatch) return;
+  const pending = SKYBOX_FACES.filter(({ key }) =>
+    skyboxBatch.faces[key]?.status === "processing" && skyboxBatch.faces[key].uploadId
+  );
+  if (!pending.length) return;
+  skyboxBusy = true;
+  setSkyboxAtlasStatus("", "Memeriksa status gambar yang masih diproses...");
+  updateSkyboxControls();
+  await Promise.all(pending.map(({ key }) => pollSkyboxFace(key, skyboxBatch.faces[key].uploadId)));
+  const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
+  if (states.every((state) => state === "completed")) {
+    skyboxBatch.status = "completed";
+    setSkyboxAtlasStatus("success", "Keenam gambar selesai. Asset ID sudah terpasang dan file Sky siap diunduh.");
+  } else {
+    skyboxBatch.status = states.some((state) => state === "failed") ? "failed" : "processing";
+    setSkyboxAtlasStatus("", "Beberapa gambar masih diproses. Periksa status lagi nanti.");
+  }
+  skyboxBusy = false;
+  updateSkyboxControls();
+  await loadHistory();
 }
 
 function downloadSkyboxFile() {
   const result = $("#skyboxResult");
+  if (skyboxBusy || (skyboxBatch && skyboxBatch.status !== "completed")) {
+    result.className = "skybox-result";
+    result.textContent = "Unduhan aktif setelah keenam gambar selesai diunggah ke Roblox.";
+    return;
+  }
   const faceIds = Object.fromEntries(SKYBOX_FACES.map(({ key }) => [
     key,
     $(`[data-sky-id="${key}"]`).value,
@@ -494,6 +1106,7 @@ function updateIdentity() {
     : "Atur Creator ID dan API key di Setup Roblox";
   $("#reviewUpload").disabled = !signedIn || !me.robloxConfigured;
   renderMembership();
+  updateSkyboxControls();
 }
 
 async function loadStatus() {
@@ -1005,6 +1618,8 @@ function openReview() {
     showUploadStatus("error", "Tidak ada file yang menunggu upload.");
     return;
   }
+  pendingSkyboxBatch = null;
+  $("#confirmUpload").textContent = "Konfirmasi upload";
   $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
   $("#rightsConfirmText").textContent =
     "Saya memiliki hak untuk mengunggah semua file di antrean dan memahami Roblox dapat meninjau atau menolaknya.";
@@ -1024,17 +1639,17 @@ function openReview() {
   $("#confirmDialog").showModal();
 }
 
-async function pollOperation(uploadId, assetType) {
+async function pollOperation(uploadId, assetType, refreshHistory = true) {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const data = await callFunction("roblox-operation", { body: { uploadId } });
     if (data.status === "completed") {
-      await loadHistory();
+      if (refreshHistory) await loadHistory();
       return { status: "completed", assetId: String(data.assetId || "") };
     }
     if (data.status === "failed") throw new Error(data.error || "Roblox menolak upload.");
   }
-  await loadHistory();
+  if (refreshHistory) await loadHistory();
   return { status: "processing", assetId: "" };
 }
 
@@ -1206,7 +1821,6 @@ populateSkyPromptPresets();
 $("#openSkyPrompts").addEventListener("click", openSkyPromptDialog);
 $("#closeSkyPrompts").addEventListener("click", () => $("#skyPromptDialog").close());
 $("#skyPromptPreset").addEventListener("change", renderSkyPrompt);
-$("#skyPromptFace").addEventListener("change", renderSkyPrompt);
 $("#copySkyPrompt").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("#skyPromptText").value);
@@ -1217,9 +1831,40 @@ $("#copySkyPrompt").addEventListener("click", async () => {
   }
 });
 $$("[data-sky-id]").forEach((input) => {
-  input.addEventListener("input", () => scheduleSkyPreview(input.dataset.skyId, input.value));
+  input.addEventListener("input", () => {
+    const faceKey = input.dataset.skyId;
+    const assetId = normalizeSkyAssetId(input.value);
+    if (!skyboxBatch) {
+      setSkyFaceStatus(faceKey, assetId ? "ready" : "empty", assetId ? `Asset ID ${assetId}` : "Menunggu gambar");
+    }
+    scheduleSkyPreview(faceKey, input.value);
+    updateSkyboxControls();
+  });
 });
+$("#skyAtlasInput").addEventListener("change", (event) => {
+  const [file] = event.target.files || [];
+  if (file) void prepareSkyboxAtlas(file);
+});
+const skyboxAtlasDrop = $("#skyboxAtlasDrop");
+skyboxAtlasDrop.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  skyboxAtlasDrop.dataset.dragover = "true";
+});
+skyboxAtlasDrop.addEventListener("dragleave", () => { delete skyboxAtlasDrop.dataset.dragover; });
+skyboxAtlasDrop.addEventListener("drop", (event) => {
+  event.preventDefault();
+  delete skyboxAtlasDrop.dataset.dragover;
+  const [file] = event.dataTransfer.files || [];
+  if (file) {
+    $("#skyboxAtlasFileLabel").textContent = file.name;
+    void prepareSkyboxAtlas(file);
+  }
+});
+$("#uploadSkyAtlas").addEventListener("click", openSkyboxReview);
+$("#clearSkyAtlas").addEventListener("click", clearSkyboxAtlas);
+$("#refreshSkyAtlasStatus").addEventListener("click", () => void refreshSkyboxStatus());
 const skyboxOrbitStage = $("#skyboxOrbitStage");
+initializeSkyboxScene();
 let skyOrbitPointerId = null;
 let skyOrbitPointerX = 0;
 let skyOrbitPointerY = 0;
@@ -1234,10 +1879,10 @@ skyboxOrbitStage.addEventListener("pointerdown", (event) => {
 skyboxOrbitStage.addEventListener("pointermove", (event) => {
   if (event.pointerId !== skyOrbitPointerId) return;
   skyOrbitRotationY += (event.clientX - skyOrbitPointerX) * 0.45;
-  skyOrbitRotationX = Math.max(-80, Math.min(80, skyOrbitRotationX + (event.clientY - skyOrbitPointerY) * 0.45));
+  skyOrbitRotationX = Math.max(-80, Math.min(80, skyOrbitRotationX - (event.clientY - skyOrbitPointerY) * 0.45));
   skyOrbitPointerX = event.clientX;
   skyOrbitPointerY = event.clientY;
-  renderSkyCube();
+  drawSkyboxScene();
 });
 const finishSkyOrbitDrag = (event) => {
   if (event.pointerId !== skyOrbitPointerId) return;
@@ -1250,22 +1895,14 @@ skyboxOrbitStage.addEventListener("keydown", (event) => {
   const step = event.shiftKey ? 20 : 10;
   if (event.key === "ArrowLeft") skyOrbitRotationY -= step;
   else if (event.key === "ArrowRight") skyOrbitRotationY += step;
-  else if (event.key === "ArrowUp") skyOrbitRotationX = Math.max(-80, skyOrbitRotationX - step);
-  else if (event.key === "ArrowDown") skyOrbitRotationX = Math.min(80, skyOrbitRotationX + step);
+  else if (event.key === "ArrowUp") skyOrbitRotationX = Math.min(80, skyOrbitRotationX + step);
+  else if (event.key === "ArrowDown") skyOrbitRotationX = Math.min(80, skyOrbitRotationX - step);
   else return;
   event.preventDefault();
-  renderSkyCube();
+  drawSkyboxScene();
 });
 $("#resetSkyOrbit").addEventListener("click", resetSkyCube);
 $("#generateSkyFile").addEventListener("click", downloadSkyboxFile);
-$("#uploadSkyFaces").addEventListener("click", () => {
-  if (!me.authenticated) {
-    showToast("Masuk dengan Discord dulu untuk mengunggah gambar.");
-    return;
-  }
-  setAssetType("Decal");
-  navigate("upload");
-});
 $$("[data-vip-days]").forEach((button) => {
   button.addEventListener("click", () => {
     const days = Number(button.dataset.vipDays);
@@ -1323,9 +1960,22 @@ $("#reviewUpload").addEventListener("click", openReview);
 $("#robloxCredentialsForm").addEventListener("submit", saveRobloxCredentials);
 $("#disconnectRoblox").addEventListener("click", disconnectRoblox);
 $("#playbackSpeed").addEventListener("change", updatePlaybackSpeedHelp);
-$("#cancelReview").addEventListener("click", () => $("#confirmDialog").close());
+$("#cancelReview").addEventListener("click", () => {
+  pendingSkyboxBatch = null;
+  $("#confirmUpload").textContent = "Konfirmasi upload";
+  $("#confirmDialog").close();
+});
 $("#rightsConfirm").addEventListener("change", (event) => { $("#confirmUpload").disabled = !event.target.checked; });
-$("#confirmUpload").addEventListener("click", submitUpload);
+$("#confirmUpload").addEventListener("click", () => {
+  const batch = pendingSkyboxBatch;
+  pendingSkyboxBatch = null;
+  if (batch) {
+    $("#confirmDialog").close();
+    void submitSkyboxBatch(batch);
+  } else {
+    void submitUpload();
+  }
+});
 $("#historySearch").addEventListener("input", renderHistory);
 $("#historyTypeFilter").addEventListener("change", renderHistory);
 $("#historyContainer").addEventListener("click", async (event) => {
@@ -1343,6 +1993,7 @@ buildWaveform();
 updatePlaybackSpeedHelp();
 setAssetType("Audio");
 renderUploadQueue();
+updateSkyboxControls();
 updateIdentity();
 void loadSession();
 setInterval(() => {

@@ -428,6 +428,9 @@ verify_jwt = false
 [functions.roblox-upload]
 verify_jwt = false
 
+[functions.roblox-skybox-upload]
+verify_jwt = false
+
 [functions.roblox-operation]
 verify_jwt = false
 

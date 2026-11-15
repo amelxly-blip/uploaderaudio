@@ -12,6 +12,7 @@ const ALLOWED_FUNCTIONS = new Set([
   "roblox-history",
   "roblox-operation",
   "roblox-status",
+  "roblox-skybox-upload",
   "roblox-upload",
   "site-dashboard",
 ]);

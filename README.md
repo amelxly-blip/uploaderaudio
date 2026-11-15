@@ -41,11 +41,15 @@ The upload queue accepts up to 10 files of the selected type and processes them
 one at a time; audio and supported image files can be previewed before upload.
 Upload history can be searched and filtered by asset type, and completed IDs
 can be copied. The free quota panel shows the next rolling 24-hour reset time.
-The Skybox tool previews six existing Roblox image asset IDs on an interactive
-3D cube and combines them into a downloadable `.rbxmx` file containing a
-configured `Sky` instance. It also includes 19 copyable GPT image prompt themes
-for each face. The tool does not upload images or create a published Model ID;
-import the file under `Lighting` in Roblox Studio.
+The Skybox tool accepts a single 3:2 atlas in a 3-column × 2-row layout, crops
+the six square faces in the browser, and shows them in an interactive
+inside-the-sky preview. After one confirmation, the server uploads each face
+through Roblox Open Cloud and reports per-face progress and asset IDs. A Skybox
+batch consumes one application quota attempt, while Roblox still receives six
+asset-creation requests and applies its own quotas and permissions. Once all six
+uploads complete, the tool enables a downloadable `.rbxmx` containing a
+configured `Sky` instance. It includes 19 copyable GPT prompt themes for
+generating a complete atlas. Import the file under `Lighting` in Roblox Studio.
 The VIP support WhatsApp number is configured in `VIP_WHATSAPP_NUMBER` in
 `src/main.js`.
 

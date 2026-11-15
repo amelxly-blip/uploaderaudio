@@ -7,6 +7,35 @@ export const SKYBOX_FACES = [
   { key: "Dn", label: "Bawah", property: "SkyboxDn" },
 ];
 
+export function getSkyboxAtlasCells(width, height) {
+  if (
+    !Number.isInteger(width)
+    || !Number.isInteger(height)
+    || width < 3
+    || height < 2
+    || width * 2 !== height * 3
+    || width % 3 !== 0
+    || height % 2 !== 0
+  ) {
+    throw new Error("Atlas harus berupa grid 3 kolom × 2 baris dengan enam kotak persegi yang sama besar.");
+  }
+  const size = width / 3;
+  if (size >= 8000) {
+    throw new Error("Setiap sisi atlas harus lebih kecil dari 8000 × 8000 piksel.");
+  }
+  if (width * height > 32_000_000) {
+    throw new Error("Resolusi atlas terlalu besar untuk diproses dengan aman. Gunakan maksimal 32 megapiksel.");
+  }
+
+  return SKYBOX_FACES.map((face, index) => ({
+    key: face.key,
+    x: (index % 3) * size,
+    y: Math.floor(index / 3) * size,
+    width: size,
+    height: size,
+  }));
+}
+
 export const SKYBOX_PROMPTS = [
   {
     id: "moonlit",
@@ -202,5 +231,27 @@ export function buildSkyboxPrompt(presetId, faceKey) {
     "Buat elemen awan di tepi gambar berlanjut secara alami ke sisi yang bersebelahan.",
     "Jangan tambahkan teks, logo, bingkai, kolase enam panel, garis pemisah, bangunan, atau permukaan tanah.",
     `Keluarkan hanya satu gambar untuk sisi ${face.key}; jangan tampilkan keenam sisi dalam satu lembar.`,
+  ].join(" ");
+}
+
+export function buildSkyboxAtlasPrompt(presetId) {
+  const preset = SKYBOX_PROMPTS.find((entry) => entry.id === presetId);
+  if (!preset) throw new Error("Preset Skybox tidak dikenal.");
+
+  const panels = [
+    "baris atas kiri ke kanan: Depan (Ft), Belakang (Bk), Kiri (Lf)",
+    "baris bawah kiri ke kanan: Kanan (Rt), Atas (Up), Bawah (Dn)",
+  ];
+
+  return [
+    "Buat satu atlas tekstur Skybox Roblox berbentuk persegi panjang dengan rasio tepat 3:2.",
+    "Susun enam gambar sisi yang sama besar dalam grid rapat 3 kolom × 2 baris tanpa celah.",
+    ...panels,
+    "Setiap panel harus persegi; target atlas 3072 × 2048 piksel agar tiap panel 1024 × 1024.",
+    `Tema yang sama untuk seluruh sisi: ${preset.theme}.`,
+    "Setiap panel adalah arah kamera yang berbeda pada langit 360 derajat yang sama: Ft menghadap depan, Bk belakang, Lf kiri, Rt kanan, Up lurus ke atas, dan Dn lurus ke bawah.",
+    "Jaga tinggi cakrawala, palet, pencahayaan, skala awan, dan detail tepi tetap konsisten pada sisi yang bersebelahan.",
+    "Isi setiap panel sampai ke tepi; jangan tambahkan margin, gutter, garis pemisah, bingkai, label, teks, logo, atau panel kosong.",
+    "Jangan membuat satu panorama lebar yang dibagi sembarang; hasil akhirnya harus enam panel skybox persegi dengan komposisi sesuai arah masing-masing.",
   ].join(" ");
 }
