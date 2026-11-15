@@ -2,10 +2,14 @@ import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-proc
 import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
 import {
-  buildSkyboxAtlasPrompt,
+  buildSkyboxPanoramaPrompt,
   buildSkyboxRbxmx,
   getSkyboxAtlasCells,
+  getSkyboxPanoramaFaceSize,
+  getSkyboxPanoramaRegion,
+  isSkyboxPanoramaImage,
   normalizeSkyAssetId,
+  projectEquirectangularFace,
   SKYBOX_FACES,
   SKYBOX_PROMPTS,
 } from "./skybox.js";
@@ -17,7 +21,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const tabs = ["home", "upload", "skybox", "setup", "history"];
 const VIP_WHATSAPP_NUMBER = "6282174905591";
 const MAX_UPLOAD_QUEUE_SIZE = 10;
-const MAX_SKYBOX_ATLAS_SIZE = 20 * 1024 * 1024;
+const MAX_SKYBOX_INPUT_SIZE = 20 * 1024 * 1024;
 const MAX_SKYBOX_BATCH_SIZE = 20 * 1024 * 1024;
 const assetTypes = {
   Audio: {
@@ -78,6 +82,7 @@ const skyPreviewObjectUrls = new Map();
 let skyAtlasFiles = [];
 let skyboxBatch = null;
 let skyboxBusy = false;
+let skyboxPreparing = false;
 let pendingSkyboxBatch = null;
 let skyRenderer = null;
 let skyOrbitRotationX = 0;
@@ -320,7 +325,7 @@ function navigate(tab) {
 }
 
 function renderSkyPrompt() {
-  $("#skyPromptText").value = buildSkyboxAtlasPrompt($("#skyPromptPreset").value);
+  $("#skyPromptText").value = buildSkyboxPanoramaPrompt($("#skyPromptPreset").value);
 }
 
 function populateSkyPromptPresets() {
@@ -658,6 +663,7 @@ function createSkyboxError(message, diagnostic) {
 }
 
 function updateSkyboxControls() {
+  const busy = skyboxBusy || skyboxPreparing;
   const hasAtlas = skyAtlasFiles.length === SKYBOX_FACES.length;
   const faceIds = Object.fromEntries(SKYBOX_FACES.map(({ key }) => [
     key,
@@ -668,12 +674,12 @@ function updateSkyboxControls() {
     || (skyboxBatch.status === "completed"
       && SKYBOX_FACES.every(({ key }) => skyboxBatch.faces[key]?.status === "completed"));
 
-  $("#uploadSkyAtlas").disabled = skyboxBusy
+  $("#uploadSkyAtlas").disabled = busy
     || !hasAtlas
     || !me.authenticated
     || !me.robloxConfigured
     || skyboxBatch?.status !== "ready";
-  $("#clearSkyAtlas").disabled = skyboxBusy || !hasAtlas;
+  $("#clearSkyAtlas").disabled = busy || !hasAtlas;
   const isRetryableFace = (face) =>
     face?.uploadId
     && ["processing", "failed"].includes(face.status)
@@ -685,17 +691,17 @@ function updateSkyboxControls() {
   $("#refreshSkyAtlasStatus").textContent = retryingFailedSkybox
     ? "Coba baca Image ID lagi"
     : "Periksa status lagi";
-  $("#refreshSkyAtlasStatus").hidden = skyboxBusy
+  $("#refreshSkyAtlasStatus").hidden = busy
     || !SKYBOX_FACES.some(({ key }) => {
       const face = skyboxBatch?.faces[key];
       return isRetryableFace(face);
     });
-  $("#generateSkyFile").disabled = skyboxBusy || !allIdsAvailable || !batchComplete;
-  $("#skyAtlasInput").disabled = skyboxBusy;
-  $$("[data-sky-id]").forEach((input) => { input.disabled = skyboxBusy; });
+  $("#generateSkyFile").disabled = busy || !allIdsAvailable || !batchComplete;
+  $("#skyAtlasInput").disabled = busy;
+  $$("[data-sky-id]").forEach((input) => { input.disabled = busy; });
 }
 
-async function decodeAtlasImage(file) {
+async function decodeSkyboxImage(file) {
   if ("createImageBitmap" in window) return createImageBitmap(file);
 
   const objectUrl = URL.createObjectURL(file);
@@ -718,69 +724,128 @@ function canvasToJpeg(canvas) {
   });
 }
 
-async function prepareSkyboxAtlas(file) {
-  if (skyboxBusy || !file) return;
+async function prepareSkyboxImage(file) {
+  if (skyboxBusy || skyboxPreparing || !file) return;
   $("#skyboxAtlasFileLabel").textContent = file.name;
-  if (file.size === 0 || file.size > MAX_SKYBOX_ATLAS_SIZE) {
-    setSkyboxAtlasStatus("error", "File atlas harus lebih dari 0 dan maksimal 20 MB.");
+  if (file.size === 0 || file.size > MAX_SKYBOX_INPUT_SIZE) {
+    setSkyboxAtlasStatus("error", "Gambar harus lebih dari 0 dan maksimal 20 MB.");
     return;
   }
   if (!/\.(png|jpe?g|webp)$/i.test(file.name)) {
-    setSkyboxAtlasStatus("error", "Pilih atlas PNG, JPG, JPEG, atau WebP.");
+    setSkyboxAtlasStatus("error", "Pilih panorama atau atlas PNG, JPG, JPEG, atau WebP.");
     return;
   }
 
+  $("#skyAtlasInput").value = "";
+  skyboxPreparing = true;
+  updateSkyboxControls();
   let source;
   try {
-    source = await decodeAtlasImage(file);
-    const cells = getSkyboxAtlasCells(source.width, source.height);
+    source = await decodeSkyboxImage(file);
+    const isPanorama = isSkyboxPanoramaImage(source.width, source.height);
+    const panoramaRegion = isPanorama ? getSkyboxPanoramaRegion(source.width, source.height) : null;
+    const faceSize = isPanorama
+      ? getSkyboxPanoramaFaceSize(panoramaRegion.width, panoramaRegion.height)
+      : null;
+    const cells = isPanorama ? null : getSkyboxAtlasCells(source.width, source.height);
     const baseName = file.name.replace(/\.[^.]+$/, "")
       .normalize("NFKD")
       .replace(/[^\w-]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 32) || "Skybox";
+    let panoramaPixels;
+    if (isPanorama) {
+      const panoramaCanvas = document.createElement("canvas");
+      panoramaCanvas.width = panoramaRegion.width;
+      panoramaCanvas.height = panoramaRegion.height;
+      const panoramaContext = panoramaCanvas.getContext("2d", { willReadFrequently: true });
+      if (!panoramaContext) throw new Error("Browser tidak bisa membaca gambar panorama.");
+      panoramaContext.drawImage(
+        source,
+        panoramaRegion.x,
+        panoramaRegion.y,
+        panoramaRegion.width,
+        panoramaRegion.height,
+        0,
+        0,
+        panoramaRegion.width,
+        panoramaRegion.height,
+      );
+      panoramaPixels = panoramaContext.getImageData(
+        0,
+        0,
+        panoramaRegion.width,
+        panoramaRegion.height,
+      ).data;
+      panoramaCanvas.width = 0;
+      panoramaCanvas.height = 0;
+    }
+
     const files = [];
     let totalSize = 0;
-    for (const cell of cells) {
+    if (isPanorama) {
+      setSkyboxAtlasStatus("", `Memproyeksikan panorama menjadi enam sisi ${faceSize} × ${faceSize}...`);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    for (let index = 0; index < SKYBOX_FACES.length; index += 1) {
+      const face = SKYBOX_FACES[index];
+      const cell = cells?.[index];
+      const size = faceSize || cell.width;
       const canvas = document.createElement("canvas");
-      canvas.width = cell.width;
-      canvas.height = cell.height;
+      canvas.width = size;
+      canvas.height = size;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("Browser tidak bisa membuka kanvas pemotong gambar.");
-      context.fillStyle = "#15171a";
-      context.fillRect(0, 0, cell.width, cell.height);
-      context.drawImage(
-        source,
-        cell.x,
-        cell.y,
-        cell.width,
-        cell.height,
-        0,
-        0,
-        cell.width,
-        cell.height,
-      );
+      if (isPanorama) {
+        if (index > 0) await new Promise((resolve) => requestAnimationFrame(resolve));
+        setSkyboxAtlasStatus("", `Memproyeksikan sisi ${face.label} dari panorama...`);
+        const facePixels = projectEquirectangularFace(
+          panoramaPixels,
+          panoramaRegion.width,
+          panoramaRegion.height,
+          face.key,
+          faceSize,
+        );
+        const imageData = context.createImageData(size, size);
+        imageData.data.set(facePixels);
+        context.putImageData(imageData, 0, 0);
+      } else {
+        context.fillStyle = "#15171a";
+        context.fillRect(0, 0, size, size);
+        context.drawImage(
+          source,
+          cell.x,
+          cell.y,
+          cell.width,
+          cell.height,
+          0,
+          0,
+          size,
+          size,
+        );
+      }
       const blob = await canvasToJpeg(canvas);
       totalSize += blob.size;
       if (totalSize > MAX_SKYBOX_BATCH_SIZE) {
-        throw new Error("Total enam gambar hasil potong melebihi 20 MB. Pilih atlas yang lebih ringan.");
+        throw new Error("Total enam gambar hasil olah melebihi 20 MB. Pilih gambar yang lebih ringan.");
       }
-      files.push(new File([blob], `${baseName}_${cell.key}.jpg`, {
+      const faceFile = new File([blob], `${baseName}_${face.key}.jpg`, {
         type: "image/jpeg",
         lastModified: Date.now(),
-      }));
+      });
+      files.push({
+        file: faceFile,
+        key: face.key,
+        name: faceFile.name,
+        size: faceFile.size,
+      });
     }
 
     skyAtlasFiles.forEach((face) => {
       const oldUrl = skyPreviewObjectUrls.get(face.key);
       if (oldUrl) URL.revokeObjectURL(oldUrl);
     });
-    skyAtlasFiles = files.map((file, index) => ({
-      file,
-      key: cells[index].key,
-      name: file.name,
-      size: file.size,
-    }));
+    skyAtlasFiles = files;
     skyboxBatch = {
       status: "ready",
       faces: Object.fromEntries(SKYBOX_FACES.map(({ key }) => [key, { status: "ready" }])),
@@ -791,21 +856,29 @@ async function prepareSkyboxAtlas(file) {
       setSkyPreviewImage(face.key, objectUrl);
       setSkyFaceStatus(face.key, "ready", `${formatSize(face.size)} · Siap ditinjau`);
     }
+    const cropNote = isPanorama
+      && (panoramaRegion.height !== source.height || panoramaRegion.width !== source.width)
+      ? ` setelah crop tengah ${panoramaRegion.width} × ${panoramaRegion.height}`
+      : "";
     setSkyboxAtlasStatus(
       "success",
-      `Atlas ${source.width} × ${source.height} dipotong menjadi enam gambar (${formatSize(totalSize)} total).`,
+      isPanorama
+        ? `Panorama ${source.width} × ${source.height} diproyeksikan menjadi enam sisi ${faceSize} × ${faceSize}${cropNote} (${formatSize(totalSize)} total).`
+        : `Atlas ${source.width} × ${source.height} dipotong menjadi enam sisi (${formatSize(totalSize)} total).`,
     );
     $("#skyAtlasInput").value = "";
     updateSkyboxControls();
   } catch (error) {
-    setSkyboxAtlasStatus("error", error.message || "Atlas tidak bisa diproses.");
+    setSkyboxAtlasStatus("error", error.message || "Gambar Skybox tidak bisa diproses.");
   } finally {
     if (source && typeof source.close === "function") source.close();
+    skyboxPreparing = false;
+    updateSkyboxControls();
   }
 }
 
 function clearSkyboxAtlas() {
-  if (skyboxBusy) return;
+  if (skyboxBusy || skyboxPreparing) return;
   skyAtlasFiles.forEach((face) => {
     const objectUrl = skyPreviewObjectUrls.get(face.key);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -814,7 +887,7 @@ function clearSkyboxAtlas() {
   skyAtlasFiles = [];
   skyboxBatch = null;
   $("#skyAtlasInput").value = "";
-  $("#skyboxAtlasFileLabel").textContent = "Pilih atau taruh satu gambar atlas di sini";
+  $("#skyboxAtlasFileLabel").textContent = "Pilih atau taruh satu panorama atau atlas di sini";
   setSkyboxAtlasStatus("", "");
   for (const { key } of SKYBOX_FACES) {
     const id = normalizeSkyAssetId($(`[data-sky-id="${key}"]`).value);
@@ -1914,7 +1987,7 @@ $$("[data-sky-id]").forEach((input) => {
 });
 $("#skyAtlasInput").addEventListener("change", (event) => {
   const [file] = event.target.files || [];
-  if (file) void prepareSkyboxAtlas(file);
+  if (file) void prepareSkyboxImage(file);
 });
 const skyboxAtlasDrop = $("#skyboxAtlasDrop");
 skyboxAtlasDrop.addEventListener("dragover", (event) => {
@@ -1928,7 +2001,7 @@ skyboxAtlasDrop.addEventListener("drop", (event) => {
   const [file] = event.dataTransfer.files || [];
   if (file) {
     $("#skyboxAtlasFileLabel").textContent = file.name;
-    void prepareSkyboxAtlas(file);
+    void prepareSkyboxImage(file);
   }
 });
 $("#uploadSkyAtlas").addEventListener("click", openSkyboxReview);

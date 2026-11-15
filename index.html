@@ -928,26 +928,26 @@
           <div class="page-heading">
             <div class="eyebrow">TOOLS WORKSPACE</div>
             <h1>Skybox generator</h1>
-            <p class="page-intro">Pilih satu atlas 3×2. Preview enam arah, upload sebagai satu batch, lalu unduh file Sky untuk Roblox Studio.</p>
+            <p class="page-intro">Upload satu panorama 360°; web mengubahnya menjadi enam sisi Sky. Atlas 3×2 lama juga tetap didukung.</p>
           </div>
           <div class="skybox-layout">
             <section class="surface skybox-panel">
-              <div class="surface-title">Satu gambar, enam sisi</div>
-              <div class="surface-subtitle">Atlas dipotong langsung di browser menjadi enam gambar Roblox. Untuk upload, masuk dengan Discord dan siapkan Creator ID serta API key di Setup.</div>
+              <div class="surface-title">Satu panorama, enam sisi</div>
+              <div class="surface-subtitle">Panorama equirectangular diproyeksikan langsung di browser ke enam sisi Sky. Format atlas 3×2 tetap bisa dipakai. Untuk upload, masuk dengan Discord dan siapkan Creator ID serta API key di Setup.</div>
               <section class="skybox-atlas" aria-labelledby="skyboxAtlasTitle">
                 <div class="skybox-atlas-copy">
-                  <b id="skyboxAtlasTitle">Pilih gambar atlas</b>
-                  <p>Urutan kotak: atas Depan, Belakang, Kiri; bawah Kanan, Atas, Bawah. Rasio tepat 3:2, PNG/JPG/WebP, maksimal 20 MB. Disarankan 3072 × 2048 agar tiap sisi 1024 × 1024.</p>
+                  <b id="skyboxAtlasTitle">Pilih panorama atau atlas</b>
+                  <p>Disarankan panorama 360° equirectangular rasio 2:1 (minimal 512 × 256). Hasil 16:9 akan dipotong tipis dari tengah. Atlas 3×2 lama tetap diterima. PNG/JPG/WebP, maksimal 20 MB.</p>
                 </div>
                 <label class="skybox-atlas-drop" id="skyboxAtlasDrop" for="skyAtlasInput">
                   <input id="skyAtlasInput" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
-                  <span id="skyboxAtlasFileLabel">Pilih atau taruh satu gambar atlas di sini</span>
+                  <span id="skyboxAtlasFileLabel">Pilih atau taruh satu panorama atau atlas di sini</span>
                 </label>
               </section>
               <div class="skybox-atlas-actions">
                 <button class="primary" id="uploadSkyAtlas" type="button" disabled>Tinjau dan upload 6 sisi</button>
                 <button class="secondary" id="refreshSkyAtlasStatus" type="button" hidden>Periksa status lagi</button>
-                <button class="secondary" id="clearSkyAtlas" type="button" disabled>Hapus atlas</button>
+                <button class="secondary" id="clearSkyAtlas" type="button" disabled>Hapus gambar</button>
                 <button class="secondary" id="openSkyPrompts" type="button">Buka preset prompt GPT</button>
               </div>
               <div class="skybox-atlas-status" id="skyboxAtlasStatus" role="status" aria-live="polite"></div>
@@ -1015,7 +1015,7 @@
             </section>
             <aside class="surface skybox-guide">
               <div class="surface-title">Sebelum mulai</div>
-              <div class="skybox-step"><b>Periksa keenam potongan</b>Pastikan urutan wajah dan sambungan langit sudah sesuai sebelum membuat asset.</div>
+              <div class="skybox-step"><b>Periksa preview 3D</b>Pastikan panorama terlihat menyambung sebelum mengunggah enam Image ke Roblox.</div>
               <div class="skybox-step"><b>Konfirmasi satu kali</b>Satu batch memakai satu percobaan kuota aplikasi; Roblox tetap menerima enam pembuatan asset.</div>
               <div class="skybox-step"><b>Impor file Sky</b>Setelah keenam ID tersedia, unduh `.rbxmx`, lalu pilih Insert from File pada Lighting di Roblox Studio.</div>
               <p class="sky-prompt-note">Upload memakai Roblox Open Cloud resmi. Kuota Roblox, izin API key, dan moderasi tetap berlaku untuk setiap gambar.</p>
@@ -1062,7 +1062,7 @@
   </dialog>
   <dialog class="modal" id="skyPromptDialog" aria-labelledby="skyPromptTitle">
     <h2 id="skyPromptTitle">Preset prompt skybox</h2>
-    <p class="modal-copy">Pilih suasana, lalu salin prompt untuk membuat enam sisi cubemap dari satu lingkungan 360 derajat.</p>
+    <p class="modal-copy">Pilih suasana, lalu salin prompt untuk membuat satu panorama 360° yang web ubah menjadi enam sisi Sky.</p>
     <div class="sky-prompt-controls">
       <div>
         <label for="skyPromptPreset">Suasana</label>
@@ -1070,7 +1070,7 @@
       </div>
     </div>
     <textarea class="sky-prompt-text" id="skyPromptText" readonly aria-label="Prompt untuk disalin"></textarea>
-    <p class="sky-prompt-note">Periksa preview 3D sebelum upload. Jika terlihat sambungan, sudut, atau garis cakrawala meloncat, perbaiki atlas lebih dulu. Rasio 3:2 disarankan 3072 × 2048 piksel.</p>
+    <p class="sky-prompt-note">Hasil prompt berupa satu panorama 360° rasio 2:1. Jika generator menghasilkan 16:9, web memotongnya dari tengah sebelum membuat enam sisi.</p>
     <div class="modal-actions"><button class="secondary" id="closeSkyPrompts" type="button">Tutup</button><button class="primary" id="copySkyPrompt" type="button">Salin prompt</button></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

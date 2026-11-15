@@ -7,6 +7,10 @@ export const SKYBOX_FACES = [
   { key: "Dn", label: "Bawah", property: "SkyboxDn" },
 ];
 
+const MAX_SKYBOX_IMAGE_PIXELS = 32_000_000;
+const MIN_SKYBOX_PANORAMA_FACE_SIZE = 128;
+const SKYBOX_PI = Math.PI;
+
 const SKYBOX_FACE_ORIENTATIONS = {
   Ft: "menghadap depan (-Z), kanan gambar ke +X dan atas gambar ke +Y",
   Bk: "menghadap belakang (+Z), kanan gambar ke -X dan atas gambar ke +Y",
@@ -32,7 +36,7 @@ export function getSkyboxAtlasCells(width, height) {
   if (size >= 8000) {
     throw new Error("Setiap sisi atlas harus lebih kecil dari 8000 × 8000 piksel.");
   }
-  if (width * height > 32_000_000) {
+  if (width * height > MAX_SKYBOX_IMAGE_PIXELS) {
     throw new Error("Resolusi atlas terlalu besar untuk diproses dengan aman. Gunakan maksimal 32 megapiksel.");
   }
 
@@ -45,7 +49,159 @@ export function getSkyboxAtlasCells(width, height) {
   }));
 }
 
+export function getSkyboxPanoramaFaceSize(width, height) {
+  if (
+    !Number.isInteger(width)
+    || !Number.isInteger(height)
+    || width < MIN_SKYBOX_PANORAMA_FACE_SIZE * 4
+    || height < MIN_SKYBOX_PANORAMA_FACE_SIZE * 2
+    || Math.abs(width - height * 2) > 1
+  ) {
+    throw new Error("Panorama harus berasio 2:1 dan minimal 512 × 256 piksel.");
+  }
+  if (width * height > MAX_SKYBOX_IMAGE_PIXELS) {
+    throw new Error("Resolusi panorama terlalu besar untuk diproses dengan aman. Gunakan maksimal 32 megapiksel.");
+  }
+
+  const faceSize = Math.floor(Math.min(width / 4, height / 2));
+  if (faceSize < MIN_SKYBOX_PANORAMA_FACE_SIZE) {
+    throw new Error("Setiap sisi hasil panorama harus berukuran minimal 128 × 128 piksel.");
+  }
+  return faceSize;
+}
+
+export function isSkyboxPanoramaImage(width, height) {
+  return Number.isInteger(width)
+    && Number.isInteger(height)
+    && width > 0
+    && height > 0
+    && width / height >= 1.75
+    && width / height <= 2.25;
+}
+
+export function getSkyboxPanoramaRegion(width, height) {
+  if (!isSkyboxPanoramaImage(width, height)) {
+    throw new Error("Panorama harus memiliki rasio sekitar 2:1, termasuk hasil 16:9.");
+  }
+  if (Math.abs(width - height * 2) <= 1) return { x: 0, y: 0, width, height };
+
+  if (width < height * 2) {
+    const cropHeight = Math.floor(width / 2);
+    return {
+      x: 0,
+      y: Math.floor((height - cropHeight) / 2),
+      width,
+      height: cropHeight,
+    };
+  }
+
+  const cropWidth = Math.floor(height * 2);
+  return {
+    x: Math.floor((width - cropWidth) / 2),
+    y: 0,
+    width: cropWidth,
+    height,
+  };
+}
+
+export function projectEquirectangularFace(sourcePixels, width, height, faceKey, faceSize) {
+  if (
+    !ArrayBuffer.isView(sourcePixels)
+    || sourcePixels instanceof DataView
+    || !Number.isInteger(width)
+    || !Number.isInteger(height)
+    || sourcePixels.length !== width * height * 4
+  ) {
+    throw new Error("Data panorama tidak valid untuk diproyeksikan.");
+  }
+  if (!SKYBOX_FACES.some(({ key }) => key === faceKey)) {
+    throw new Error("Sisi Skybox tidak dikenal.");
+  }
+  const maximumFaceSize = getSkyboxPanoramaFaceSize(width, height);
+  if (!Number.isInteger(faceSize) || faceSize < MIN_SKYBOX_PANORAMA_FACE_SIZE || faceSize > maximumFaceSize) {
+    throw new Error(`Ukuran sisi hasil panorama harus antara 128 dan ${maximumFaceSize} piksel.`);
+  }
+
+  const pixels = new Uint8ClampedArray(faceSize * faceSize * 4);
+  for (let y = 0; y < faceSize; y += 1) {
+    const vertical = 1 - 2 * (y + 0.5) / faceSize;
+    for (let x = 0; x < faceSize; x += 1) {
+      const horizontal = 2 * (x + 0.5) / faceSize - 1;
+      let directionX;
+      let directionY;
+      let directionZ;
+
+      switch (faceKey) {
+        case "Ft":
+          directionX = horizontal;
+          directionY = vertical;
+          directionZ = -1;
+          break;
+        case "Bk":
+          directionX = -horizontal;
+          directionY = vertical;
+          directionZ = 1;
+          break;
+        case "Lf":
+          directionX = -1;
+          directionY = vertical;
+          directionZ = -horizontal;
+          break;
+        case "Rt":
+          directionX = 1;
+          directionY = vertical;
+          directionZ = horizontal;
+          break;
+        case "Up":
+          directionX = horizontal;
+          directionY = 1;
+          directionZ = -vertical;
+          break;
+        default:
+          directionX = horizontal;
+          directionY = -1;
+          directionZ = vertical;
+          break;
+      }
+
+      const longitude = Math.atan2(directionX, -directionZ);
+      const directionLength = Math.hypot(directionX, directionY, directionZ);
+      const latitude = Math.asin(directionY / directionLength);
+      const panoramaU = longitude / (2 * SKYBOX_PI) + 0.5;
+      const panoramaV = 0.5 - latitude / SKYBOX_PI;
+      const sourceX = ((panoramaU * width - 0.5) % width + width) % width;
+      const sourceY = Math.max(0, Math.min(height - 1, panoramaV * height - 0.5));
+      const x0 = Math.floor(sourceX);
+      const x1 = (x0 + 1) % width;
+      const y0 = Math.floor(sourceY);
+      const y1 = Math.min(height - 1, y0 + 1);
+      const fractionX = sourceX - x0;
+      const fractionY = sourceY - y0;
+      const sourceTopLeft = (y0 * width + x0) * 4;
+      const sourceTopRight = (y0 * width + x1) * 4;
+      const sourceBottomLeft = (y1 * width + x0) * 4;
+      const sourceBottomRight = (y1 * width + x1) * 4;
+      const destination = (y * faceSize + x) * 4;
+
+      for (let channel = 0; channel < 4; channel += 1) {
+        const top = sourcePixels[sourceTopLeft + channel] * (1 - fractionX)
+          + sourcePixels[sourceTopRight + channel] * fractionX;
+        const bottom = sourcePixels[sourceBottomLeft + channel] * (1 - fractionX)
+          + sourcePixels[sourceBottomRight + channel] * fractionX;
+        pixels[destination + channel] = top * (1 - fractionY) + bottom * fractionY;
+      }
+    }
+  }
+  return pixels;
+}
+
 export const SKYBOX_PROMPTS = [
+  {
+    id: "daylight",
+    name: "Awan siang realistis",
+    description: "Awan cumulus besar, matahari sore, dan kabut cakrawala.",
+    theme: "langit siang realistis dengan awan cumulus besar, matahari sore hangat tepat di pusat arah depan, dan kabut lembut dekat cakrawala",
+  },
   {
     id: "moonlit",
     name: "Bulan tengah malam",
@@ -234,25 +390,18 @@ export function buildSkyboxPrompt(presetId, faceKey) {
   ].join(" ");
 }
 
-export function buildSkyboxAtlasPrompt(presetId) {
+export function buildSkyboxPanoramaPrompt(presetId) {
   const preset = SKYBOX_PROMPTS.find((entry) => entry.id === presetId);
   if (!preset) throw new Error("Preset Skybox tidak dikenal.");
 
-  const panels = [
-    "Urutan panel, kiri ke kanan: baris atas Depan (Ft), Belakang (Bk), Kiri (Lf); baris bawah Kanan (Rt), Atas (Up), Bawah (Dn).",
-    `Orientasi kamera tiap panel: ${SKYBOX_FACES.map(({ key, label }) => `${label} (${key}) ${SKYBOX_FACE_ORIENTATIONS[key]}`).join("; ")}.`,
-  ];
-
   return [
-    "Buat satu atlas cubemap seamless untuk Skybox Roblox, bukan gambar kubus atau gambar ruangan.",
-    "Gunakan rasio tepat 3:2. Susun enam sisi cubemap yang sama besar dalam grid rapat 3 kolom × 2 baris tanpa celah.",
-    ...panels,
-    "Setiap panel harus persegi; ukuran yang disarankan 3072 × 2048 piksel agar tiap panel 1024 × 1024.",
-    `Buat keenam sisi sebagai satu lingkungan 360 derajat yang sama dengan tema ini: ${preset.theme}.`,
-    "Gunakan kamera dari satu titik pusat dan proyeksi cubemap 90 derajat untuk setiap panel; jangan membagi satu panorama datar menjadi enam potongan sembarang.",
-    "Keempat sisi horizontal harus memiliki garis cakrawala pada ketinggian yang sama dan warna serta pencahayaan yang menyambung. Detail awan di setiap tepi harus berlanjut secara alami ke sisi tetangga.",
-    "Panel Atas melihat lurus ke langit dan panel Bawah melihat lurus ke bawah; keduanya tidak boleh memiliki garis cakrawala.",
-    "Hasil akhir harus terasa seperti langit luas tanpa sudut atau dinding yang terlihat. Hindari kubus, ruang interior, bingkai, garis panel, margin, gutter, label, teks, logo, dan karakter.",
-    "Isi keenam panel sampai ke tepi dan jangan mengulang objek utama di sisi yang tidak menghadap objek tersebut.",
+    "Buat SATU gambar panorama langit 360 derajat untuk Skybox Roblox, dengan proyeksi equirectangular (longitude-latitude) dan rasio tepat 2:1.",
+    `Suasana dan isi panorama: ${preset.theme}.`,
+    "Letakkan arah depan dan objek utama di tengah horizontal gambar. Jika tema memiliki cakrawala, buat garisnya lurus tepat di tengah vertikal; jangan tambahkan cakrawala pada tema angkasa atau langit tanpa horizon.",
+    "Tepi kiri dan kanan harus menyambung sempurna saat panorama diulang 360 derajat; samakan warna, awan, cahaya, dan bentuk pada kedua tepi.",
+    "Bagian paling atas adalah arah tepat ke langit dan bagian paling bawah arah tepat ke bawah; jaga gradasi serta skala awan tetap lembut dan konsisten.",
+    "Gunakan bentuk awan besar yang lembut dan gradasi halus. Hindari detail kecil, bintik, grain, vignette, flare, tanah, bangunan, burung, teks, dan watermark.",
+    "Resolusi ideal 4096 × 2048 piksel atau rasio 2:1 tertinggi yang didukung.",
+    "Keluarkan hanya satu panorama utuh, bukan atlas 3×2, kubus, cross, enam panel, kolase, atau gambar terpisah.",
   ].join(" ");
 }
