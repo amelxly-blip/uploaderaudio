@@ -17,6 +17,10 @@ import {
   safeMessage,
 } from "../_shared/http.ts";
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
+import {
+  SKYBOX_ASSET_TYPE,
+  SKYBOX_UPLOAD_ASSET_TYPE,
+} from "../_shared/skybox-assets.js";
 
 const DAILY_UPLOAD_LIMIT = 5;
 const MAX_BATCH_SIZE = 20 * 1024 * 1024;
@@ -74,7 +78,7 @@ function eventStreamResponse(request: Request, faces: SkyboxFaceUpload[], discor
       void (async () => {
         for (const face of faces) {
           const requestBody = {
-            assetType: "Decal",
+            assetType: SKYBOX_UPLOAD_ASSET_TYPE,
             displayName: face.displayName,
             description: "Skybox face uploaded through Roblox Open Cloud.",
             creationContext: {
@@ -202,7 +206,7 @@ Deno.serve(async (request: Request) => {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let asset: { mime: string };
       try {
-        asset = await validateRobloxAsset("Decal", file.name, bytes);
+        asset = await validateRobloxAsset(SKYBOX_UPLOAD_ASSET_TYPE, file.name, bytes);
       } catch (error) {
         if (error instanceof AudioValidationError) {
           throw new HttpResponseError(error.status, `Sisi ${key}: ${error.message}`);
@@ -231,7 +235,7 @@ Deno.serve(async (request: Request) => {
         discord_user_id: user.id,
         display_name: face.displayName,
         file_size: face.bytes.byteLength,
-        asset_type: "Decal",
+        asset_type: SKYBOX_ASSET_TYPE,
         status: "processing",
       })))
       .select("id,display_name");

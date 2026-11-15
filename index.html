@@ -716,7 +716,7 @@
               <div class="membership-stat">
                 <div class="membership-stat-label">Upload berhasil</div>
                 <div class="membership-stat-value" id="totalUploads">—</div>
-                <div class="membership-stat-hint">Audio · Decal · Model</div>
+                <div class="membership-stat-hint">Audio · Image · Decal · Model</div>
               </div>
             </div>
           </section>
@@ -893,7 +893,7 @@
             <div class="surface-title">Menyiapkan API key</div>
             <div class="surface-subtitle">Buat key resmi dengan izin sekecil mungkin dan batasi ke creator yang sesuai.</div>
             <div class="guide-list">
-              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat key di Creator Dashboard</b>Pilih API Keys dan beri izin Assets yang dibutuhkan untuk jenis upload yang kamu gunakan.</div></div>
+              <div class="guide-step"><span class="step-marker">1</span><div class="step-copy"><b>Buat key di Creator Dashboard</b>Aktifkan izin Assets: Read dan Write. Read dibutuhkan agar Skybox bisa mengambil Image ID dari Decal.</div></div>
               <div class="guide-step"><span class="step-marker">2</span><div class="step-copy"><b>Batasi izin dan creator</b>Gunakan key dengan akses minimum dan batasi hanya ke akun pengguna atau grup tujuan.</div></div>
               <div class="guide-step"><span class="step-marker">3</span><div class="step-copy"><b>Simpan di form ini</b>Pilih jenis creator, masukkan ID-nya, lalu tempel API key di kolom konfigurasi di atas. Jangan kirim API key lewat chat.</div></div>
             </div>
@@ -915,6 +915,7 @@
               <select id="historyTypeFilter" aria-label="Filter jenis asset">
                 <option value="all">Semua jenis</option>
                 <option value="Audio">Audio</option>
+                <option value="Image">Image</option>
                 <option value="Decal">Decal</option>
                 <option value="Model">Model</option>
               </select>
@@ -964,7 +965,7 @@
                 </div>
               </section>
               <div class="surface-title skybox-faces-title">Enam sisi Sky</div>
-              <div class="surface-subtitle">Asset ID akan terisi otomatis setelah Roblox menyelesaikan upload. Kamu juga bisa memasukkan ID gambar yang sudah ada.</div>
+              <div class="surface-subtitle">Image ID akan diambil dari setiap Decal setelah upload selesai. Kamu juga bisa memasukkan Image ID yang sudah ada.</div>
               <div class="skybox-face-grid">
                 <label class="skybox-face-card">
                   <span class="skybox-face-heading">Depan <code>SkyboxFt</code></span>

@@ -9,6 +9,12 @@ import {
   robloxError,
 } from "../_shared/http.ts";
 import { getUserRobloxConfig } from "../_shared/roblox-credentials.ts";
+import {
+  getRobloxAssetId,
+  getSkyboxImageAssetId,
+  RobloxImageIdResolutionError,
+  SKYBOX_ASSET_TYPE,
+} from "../_shared/skybox-assets.js";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return preflightResponse(request);
@@ -28,7 +34,7 @@ Deno.serve(async (request: Request) => {
 
     const { data: upload, error: lookupError } = await adminClient
       .from("audio_uploads")
-      .select("id,status,operation_path,asset_id,error_message")
+      .select("id,status,operation_path,asset_id,error_message,asset_type")
       .eq("id", uploadId)
       .eq("discord_user_id", user.id)
       .maybeSingle();
@@ -62,15 +68,34 @@ Deno.serve(async (request: Request) => {
     const operation = await response.json().catch(() => null);
     if (!operation || operation.done !== true) return jsonResponse(request, { status: "processing" });
 
-    const assetId = operation.response?.assetId;
-    if (assetId && /^\d+$/.test(String(assetId))) {
+    let assetId: string | null;
+    if (upload.asset_type === SKYBOX_ASSET_TYPE) {
+      try {
+        assetId = await getSkyboxImageAssetId(operation.response, config.apiKey);
+      } catch (error) {
+        const message = error instanceof RobloxImageIdResolutionError
+          ? error.message
+          : "Roblox gagal mengambil Image ID dari Decal. ID Decal tidak digunakan.";
+        const { error: updateError } = await adminClient
+          .from("audio_uploads")
+          .update({ status: "failed", error_message: message })
+          .eq("id", upload.id)
+          .eq("discord_user_id", user.id);
+        if (updateError) throw new Error("Could not save rejected Skybox Image ID status.");
+        return jsonResponse(request, { status: "failed", error: message });
+      }
+    } else {
+      assetId = getRobloxAssetId(operation.response);
+    }
+
+    if (assetId) {
       const { error: updateError } = await adminClient
         .from("audio_uploads")
-        .update({ status: "completed", asset_id: String(assetId), error_message: null })
+        .update({ status: "completed", asset_id: assetId, error_message: null })
         .eq("id", upload.id)
         .eq("discord_user_id", user.id);
       if (updateError) throw new Error("Could not save completed asset status.");
-      return jsonResponse(request, { status: "completed", assetId: String(assetId) });
+      return jsonResponse(request, { status: "completed", assetId });
     }
 
     const message = "Roblox menolak upload ini. Periksa izin API key, kuota, dan moderasi di Creator Dashboard.";

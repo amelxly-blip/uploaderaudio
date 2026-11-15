@@ -833,11 +833,11 @@ function openSkyboxReview() {
   pendingSkyboxBatch = { name, files: [...skyAtlasFiles] };
   $("#reviewDialogTitle").textContent = "Konfirmasi upload skybox";
   $("#reviewDialogCopy").textContent =
-    "Setiap sisi akan dibuat sebagai asset gambar baru di Roblox. Periksa file dan creator sebelum mengirim.";
+    "Setiap sisi diunggah sebagai Decal. Server perlu izin Assets: Read untuk mengambil Image ID terkait setelah upload.";
   $("#reviewCreator").textContent = creatorDisplayName() || "Creator Roblox yang terhubung";
   $("#reviewQueueList").innerHTML = pendingSkyboxBatch.files.map((face) => {
     const definition = SKYBOX_FACES.find(({ key }) => key === face.key);
-    return `<div class="review-queue-item"><strong>${escapeHtml(definition.label)} · ${escapeHtml(face.name)}</strong><span>Decal · ${escapeHtml(formatSize(face.size))}</span></div>`;
+    return `<div class="review-queue-item"><strong>${escapeHtml(definition.label)} · ${escapeHtml(face.name)}</strong><span>Decal → Image ID · ${escapeHtml(formatSize(face.size))}</span></div>`;
   }).join("");
   $("#reviewCount").textContent =
     "6 asset Roblox. Batch ini memakai 1 percobaan kuota aplikasi; kuota Roblox tetap berlaku.";
@@ -884,7 +884,7 @@ async function pollSkyboxFace(faceKey, uploadId) {
       face.status = "completed";
       face.assetId = result.assetId;
       $(`[data-sky-id="${faceKey}"]`).value = result.assetId;
-      setSkyFaceStatus(faceKey, "completed", `Selesai · Asset ID ${result.assetId}`);
+      setSkyFaceStatus(faceKey, "completed", `Selesai · Image ID ${result.assetId}`);
     } else {
       face.status = "processing";
       setSkyFaceStatus(faceKey, "processing", "Masih diproses · gunakan Periksa status lagi");
@@ -957,7 +957,7 @@ async function submitSkyboxBatch(batch) {
     const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
     if (states.every((state) => state === "completed")) {
       skyboxBatch.status = "completed";
-      setSkyboxAtlasStatus("success", "Keenam gambar selesai. Asset ID sudah terpasang dan file Sky siap diunduh.");
+      setSkyboxAtlasStatus("success", "Keenam Image ID sudah terpasang dan file Sky siap diunduh.");
     } else if (states.some((state) => state === "processing")) {
       skyboxBatch.status = "processing";
       setSkyboxAtlasStatus("", "Sebagian gambar masih diproses Roblox. Periksa status lagi sebelum mengunduh.");
@@ -1006,7 +1006,7 @@ async function refreshSkyboxStatus() {
   const states = SKYBOX_FACES.map(({ key }) => skyboxBatch.faces[key]?.status);
   if (states.every((state) => state === "completed")) {
     skyboxBatch.status = "completed";
-    setSkyboxAtlasStatus("success", "Keenam gambar selesai. Asset ID sudah terpasang dan file Sky siap diunduh.");
+    setSkyboxAtlasStatus("success", "Keenam Image ID sudah terpasang dan file Sky siap diunduh.");
   } else {
     skyboxBatch.status = states.some((state) => state === "failed") ? "failed" : "processing";
     setSkyboxAtlasStatus("", "Beberapa gambar masih diproses. Periksa status lagi nanti.");
@@ -1751,8 +1751,8 @@ function renderHistory() {
     const statusClass = item.status === "completed" ? "success" : item.status === "processing" ? "pending" : "error";
     const size = Number(item.file_size) || 0;
     const date = item.created_at ? new Date(item.created_at).toLocaleString("id-ID") : "—";
-    const type = ["Audio", "Decal", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
-    const icon = type === "Audio" ? "♫" : type === "Decal" ? "▧" : "⬡";
+    const type = ["Audio", "Decal", "Image", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
+    const icon = type === "Audio" ? "♫" : type === "Model" ? "⬡" : "▧";
     const assetId = item.asset_id ? String(item.asset_id) : "";
     const assetIdMarkup = assetId
       ? `<span class="history-asset-id">ID ${escapeHtml(assetId)}</span><button class="copy-id-button" type="button" data-copy-asset-id="${escapeHtml(assetId)}">Salin ID</button>`
@@ -1782,8 +1782,8 @@ function renderRecent() {
   target.innerHTML = latest.map((item) => {
     const status = item.status === "completed" ? "Selesai" : item.status === "processing" ? "Diproses" : "Gagal";
     const date = item.created_at ? new Date(item.created_at).toLocaleString("id-ID") : "";
-    const type = ["Audio", "Decal", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
-    const icon = type === "Audio" ? "♫" : type === "Decal" ? "▧" : "⬡";
+    const type = ["Audio", "Decal", "Image", "Model"].includes(item.asset_type) ? item.asset_type : "Audio";
+    const icon = type === "Audio" ? "♫" : type === "Model" ? "⬡" : "▧";
     return `<div class="recent-row"><div class="track-icon">${icon}</div><div class="track-copy"><div class="track-name">${escapeHtml(item.display_name)}</div><div class="track-meta">${type} · ${escapeHtml(date)}${item.asset_id ? ` · ${escapeHtml(item.asset_id)}` : ""}</div></div><span class="tag">${status}</span></div>`;
   }).join("");
 }
