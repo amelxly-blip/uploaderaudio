@@ -724,6 +724,15 @@ function canvasToJpeg(canvas) {
   });
 }
 
+function canvasToPng(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Browser gagal memproses salah satu gambar Sky."));
+    }, "image/png");
+  });
+}
+
 async function prepareSkyboxImage(file) {
   if (skyboxBusy || skyboxPreparing || !file) return;
   $("#skyboxAtlasFileLabel").textContent = file.name;
@@ -824,13 +833,15 @@ async function prepareSkyboxImage(file) {
           size,
         );
       }
-      const blob = await canvasToJpeg(canvas);
+      const blob = isPanorama ? await canvasToPng(canvas) : await canvasToJpeg(canvas);
       totalSize += blob.size;
       if (totalSize > MAX_SKYBOX_BATCH_SIZE) {
         throw new Error("Total enam gambar hasil olah melebihi 20 MB. Pilih gambar yang lebih ringan.");
       }
-      const faceFile = new File([blob], `${baseName}_${face.key}.jpg`, {
-        type: "image/jpeg",
+      const imageType = isPanorama ? "image/png" : "image/jpeg";
+      const extension = isPanorama ? "png" : "jpg";
+      const faceFile = new File([blob], `${baseName}_${face.key}.${extension}`, {
+        type: imageType,
         lastModified: Date.now(),
       });
       files.push({

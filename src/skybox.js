@@ -124,9 +124,9 @@ export function projectEquirectangularFace(sourcePixels, width, height, faceKey,
 
   const pixels = new Uint8ClampedArray(faceSize * faceSize * 4);
   for (let y = 0; y < faceSize; y += 1) {
-    const vertical = 1 - 2 * (y + 0.5) / faceSize;
+    const vertical = y === 0 ? 1 : y === faceSize - 1 ? -1 : 1 - 2 * (y + 0.5) / faceSize;
     for (let x = 0; x < faceSize; x += 1) {
-      const horizontal = 2 * (x + 0.5) / faceSize - 1;
+      const horizontal = x === 0 ? -1 : x === faceSize - 1 ? 1 : 2 * (x + 0.5) / faceSize - 1;
       let directionX;
       let directionY;
       let directionZ;
@@ -365,6 +365,7 @@ export function buildSkyboxRbxmx(name, faceIds) {
   <Item class="Sky" referent="RBX0">
     <Properties>
       <bool name="Archivable">true</bool>
+      <bool name="CelestialBodiesShown">false</bool>
       <string name="Name">${escapeXml(displayName)}</string>
 ${properties}
     </Properties>
