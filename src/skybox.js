@@ -7,6 +7,15 @@ export const SKYBOX_FACES = [
   { key: "Dn", label: "Bawah", property: "SkyboxDn" },
 ];
 
+const SKYBOX_FACE_ORIENTATIONS = {
+  Ft: "menghadap depan (-Z), kanan gambar ke +X dan atas gambar ke +Y",
+  Bk: "menghadap belakang (+Z), kanan gambar ke -X dan atas gambar ke +Y",
+  Lf: "menghadap kiri (-X), kanan gambar ke -Z dan atas gambar ke +Y",
+  Rt: "menghadap kanan (+X), kanan gambar ke +Z dan atas gambar ke +Y",
+  Up: "menghadap atas (+Y), kanan gambar ke +X dan tepi atas mengarah ke depan (-Z)",
+  Dn: "menghadap bawah (-Y), kanan gambar ke +X dan tepi atas mengarah ke belakang (+Z)",
+};
+
 export function getSkyboxAtlasCells(width, height) {
   if (
     !Number.isInteger(width)
@@ -41,7 +50,7 @@ export const SKYBOX_PROMPTS = [
     id: "moonlit",
     name: "Bulan tengah malam",
     description: "Langit indigo, bulan terang, dan awan tipis.",
-    theme: "langit malam indigo yang tenang, bulan purnama terang berada di sisi depan, bintang kecil dan awan tipis berlapis",
+    theme: "langit malam indigo yang tenang, bulan purnama terang berada jauh di sisi depan saja, bintang kecil tersebar merata dan awan tipis berlapis",
   },
   {
     id: "sunset",
@@ -213,23 +222,14 @@ export function buildSkyboxPrompt(presetId, faceKey) {
   const face = SKYBOX_FACES.find((entry) => entry.key === faceKey);
   if (!preset || !face) throw new Error("Preset atau sisi Skybox tidak dikenal.");
 
-  const directions = {
-    Ft: "menghadap lurus ke depan; tempatkan fokus utama tema ini di area tengah dan jauh dari tepi",
-    Bk: "menghadap belakang, berlawanan arah dengan sisi depan",
-    Lf: "menghadap kiri, di antara arah depan dan belakang",
-    Rt: "menghadap kanan, di antara arah depan dan belakang",
-    Up: "menghadap lurus ke atas, tanpa cakrawala atau tanah",
-    Dn: "menghadap lurus ke bawah, tanpa cakrawala atau tanah",
-  };
-
   return [
-    `Buat SATU gambar tekstur skybox Roblox untuk sisi ${face.label} (${face.key}).`,
-    `Tema dan gaya yang harus konsisten untuk keenam sisi: ${preset.theme}.`,
-    `Arah kamera sisi ini: ${directions[face.key]}.`,
-    "Format persegi 1:1, detail bersih, langit mengisi seluruh gambar sampai ke tepi.",
-    "Pertahankan palet warna, pencahayaan, skala awan, dan suasana yang sama saat membuat sisi lain dalam percakapan ini.",
-    "Buat elemen awan di tepi gambar berlanjut secara alami ke sisi yang bersebelahan.",
-    "Jangan tambahkan teks, logo, bingkai, kolase enam panel, garis pemisah, bangunan, atau permukaan tanah.",
+    `Buat SATU tekstur persegi 1:1 untuk sisi ${face.label} (${face.key}) dari sebuah skybox Roblox seamless.`,
+    `Tema seluruh lingkungan: ${preset.theme}.`,
+    `Kamera berada di pusat lingkungan dengan proyeksi cubemap 90 derajat; arah sisi ini ${SKYBOX_FACE_ORIENTATIONS[face.key]}.`,
+    "Gambar harus menjadi bagian dari satu langit 360 derajat yang sama, bukan poster atau pemandangan terpisah.",
+    "Samakan warna, pencahayaan, tinggi cakrawala, skala awan, dan detail di tepi dengan sisi tetangga; hindari objek utama tepat di tepi.",
+    "Sisi Atas dan Bawah hanya menampilkan langit atau awan dari arah atas dan bawah, tanpa garis cakrawala.",
+    "Jangan tampilkan kubus, dinding, sudut ruangan, bingkai, panel, garis pemisah, teks, logo, atau karakter.",
     `Keluarkan hanya satu gambar untuk sisi ${face.key}; jangan tampilkan keenam sisi dalam satu lembar.`,
   ].join(" ");
 }
@@ -239,19 +239,20 @@ export function buildSkyboxAtlasPrompt(presetId) {
   if (!preset) throw new Error("Preset Skybox tidak dikenal.");
 
   const panels = [
-    "baris atas kiri ke kanan: Depan (Ft), Belakang (Bk), Kiri (Lf)",
-    "baris bawah kiri ke kanan: Kanan (Rt), Atas (Up), Bawah (Dn)",
+    "Urutan panel, kiri ke kanan: baris atas Depan (Ft), Belakang (Bk), Kiri (Lf); baris bawah Kanan (Rt), Atas (Up), Bawah (Dn).",
+    `Orientasi kamera tiap panel: ${SKYBOX_FACES.map(({ key, label }) => `${label} (${key}) ${SKYBOX_FACE_ORIENTATIONS[key]}`).join("; ")}.`,
   ];
 
   return [
-    "Buat satu atlas tekstur Skybox Roblox berbentuk persegi panjang dengan rasio tepat 3:2.",
-    "Susun enam gambar sisi yang sama besar dalam grid rapat 3 kolom × 2 baris tanpa celah.",
+    "Buat satu atlas cubemap seamless untuk Skybox Roblox, bukan gambar kubus atau gambar ruangan.",
+    "Gunakan rasio tepat 3:2. Susun enam sisi cubemap yang sama besar dalam grid rapat 3 kolom × 2 baris tanpa celah.",
     ...panels,
-    "Setiap panel harus persegi; target atlas 3072 × 2048 piksel agar tiap panel 1024 × 1024.",
-    `Tema yang sama untuk seluruh sisi: ${preset.theme}.`,
-    "Setiap panel adalah arah kamera yang berbeda pada langit 360 derajat yang sama: Ft menghadap depan, Bk belakang, Lf kiri, Rt kanan, Up lurus ke atas, dan Dn lurus ke bawah.",
-    "Jaga tinggi cakrawala, palet, pencahayaan, skala awan, dan detail tepi tetap konsisten pada sisi yang bersebelahan.",
-    "Isi setiap panel sampai ke tepi; jangan tambahkan margin, gutter, garis pemisah, bingkai, label, teks, logo, atau panel kosong.",
-    "Jangan membuat satu panorama lebar yang dibagi sembarang; hasil akhirnya harus enam panel skybox persegi dengan komposisi sesuai arah masing-masing.",
+    "Setiap panel harus persegi; ukuran yang disarankan 3072 × 2048 piksel agar tiap panel 1024 × 1024.",
+    `Buat keenam sisi sebagai satu lingkungan 360 derajat yang sama dengan tema ini: ${preset.theme}.`,
+    "Gunakan kamera dari satu titik pusat dan proyeksi cubemap 90 derajat untuk setiap panel; jangan membagi satu panorama datar menjadi enam potongan sembarang.",
+    "Keempat sisi horizontal harus memiliki garis cakrawala pada ketinggian yang sama dan warna serta pencahayaan yang menyambung. Detail awan di setiap tepi harus berlanjut secara alami ke sisi tetangga.",
+    "Panel Atas melihat lurus ke langit dan panel Bawah melihat lurus ke bawah; keduanya tidak boleh memiliki garis cakrawala.",
+    "Hasil akhir harus terasa seperti langit luas tanpa sudut atau dinding yang terlihat. Hindari kubus, ruang interior, bingkai, garis panel, margin, gutter, label, teks, logo, dan karakter.",
+    "Isi keenam panel sampai ke tepi dan jangan mengulang objek utama di sisi yang tidak menghadap objek tersebut.",
   ].join(" ");
 }
