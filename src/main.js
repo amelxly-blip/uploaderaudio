@@ -434,10 +434,10 @@ function initializeSkyboxScene() {
             color = texture2D(uLf, uv).rgb;
           }
         } else if (ray.y > 0.0) {
-          uv = vec2(0.5 + ray.x / (2.0 * ay), 0.5 - ray.z / (2.0 * ay));
+          uv = vec2(0.5 - ray.z / (2.0 * ay), 0.5 + ray.x / (2.0 * ay));
           color = texture2D(uUp, uv).rgb;
         } else {
-          uv = vec2(0.5 + ray.x / (2.0 * ay), 0.5 + ray.z / (2.0 * ay));
+          uv = vec2(0.5 - ray.z / (2.0 * ay), 0.5 - ray.x / (2.0 * ay));
           color = texture2D(uDn, uv).rgb;
         }
         gl_FragColor = vec4(color, 1.0);

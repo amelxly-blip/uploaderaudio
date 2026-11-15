@@ -16,8 +16,8 @@ const SKYBOX_FACE_ORIENTATIONS = {
   Bk: "menghadap belakang (+Z), kanan gambar ke -X dan atas gambar ke +Y",
   Lf: "menghadap kiri (-X), kanan gambar ke -Z dan atas gambar ke +Y",
   Rt: "menghadap kanan (+X), kanan gambar ke +Z dan atas gambar ke +Y",
-  Up: "menghadap atas (+Y), kanan gambar ke +X dan tepi atas mengarah ke depan (-Z)",
-  Dn: "menghadap bawah (-Y), kanan gambar ke +X dan tepi atas mengarah ke belakang (+Z)",
+  Up: "menghadap atas (+Y), kanan gambar ke -Z dan tepi atas mengarah ke kanan (+X)",
+  Dn: "menghadap bawah (-Y), kanan gambar ke -Z dan tepi atas mengarah ke kiri (-X)",
 };
 
 export function getSkyboxAtlasCells(width, height) {
@@ -153,14 +153,14 @@ export function projectEquirectangularFace(sourcePixels, width, height, faceKey,
           directionZ = horizontal;
           break;
         case "Up":
-          directionX = horizontal;
+          directionX = vertical;
           directionY = 1;
-          directionZ = -vertical;
+          directionZ = -horizontal;
           break;
         default:
-          directionX = horizontal;
+          directionX = -vertical;
           directionY = -1;
-          directionZ = vertical;
+          directionZ = -horizontal;
           break;
       }
 
