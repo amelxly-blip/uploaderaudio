@@ -280,7 +280,6 @@ function renderMembership() {
   $("#totalUploads").textContent = formatCount(statistics?.totalUploads);
   const localSpoofCount = Number(localStorage.getItem("total_spoofs_count") || "0");
   if ($("#totalSpoofs")) $("#totalSpoofs").textContent = formatCount(localSpoofCount);
-  if ($("#totalSpoofs")) $("#totalSpoofs").textContent = formatCount(localSpoofCount);
 }
 
 function updatePlaybackSpeedHelp() {
@@ -2196,3 +2195,4 @@ setTimeout(() => {
 
 // Initialize Spoof & YouTube integration
 import('./spoof-extension.js').then(m => { /* dynamic load */ });
+
