@@ -12,15 +12,13 @@ const CONFIG_FILE = path.join(os.homedir(), '.uploader_config.json');
 
 function ensureSpoofRunner() {
     const script = `
-import sys, json, asyncio, os, time, shutil, subprocess
+import sys, json, asyncio, os, time, shutil, subprocess, re
 from pathlib import Path
 import aiohttp
-import requests
 
 DL_DIR = Path.home() / "spoof_tmp"
 os.makedirs(DL_DIR, exist_ok=True)
 ASSET_TYPE_IDS = {1: 'Image', 3: 'Audio', 4: 'Mesh', 9: 'Place', 10: 'Model', 13: 'Decal', 24: 'Animation', 38: 'Plugin', 40: 'MeshPart', 62: 'Video'}
-SPEED_MAP = {"1": 0.8, "2": 1.0, "3": 1.2, "4": 1.5, "5": 1.8, "6": 2.0, "7": 2.3, "8": 2.5, "9": 3.0}
 
 def load_config():
     p = Path.home() / ".uploader_config.json"
@@ -47,17 +45,6 @@ async def get_asset_details(session, aid, headers):
                     if d.get('data'):
                         name = d['data'][0].get('Name')
                         if not asset_type_name: asset_type_name = ASSET_TYPE_IDS.get(d['data'][0].get('AssetTypeId'))
-        except: pass
-    if not name:
-        try:
-            async with session.get(f'https://apis.roblox.com/toolbox-service/v1/items/details?assetIds={aid}', headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as r:
-                if r.status == 200:
-                    d = await r.json(content_type=None)
-                    items = d.get('data', [])
-                    if items:
-                        asset = items[0].get('asset', {})
-                        name = asset.get('name')
-                        if not asset_type_name: asset_type_name = ASSET_TYPE_IDS.get(asset.get('typeId'))
         except: pass
     return name, asset_type_name
 
@@ -108,6 +95,8 @@ def process_speed(file_path, speed_val):
     return file_path
 
 async def upload_asset(session, file_path, aid, name, asset_type, api_key, user_id):
+    if not api_key or not user_id:
+        return None
     url = "https://apis.roblox.com/assets/v1/assets"
     h = {"x-api-key": api_key.strip()}
     clean_name = re.sub(r'[^a-zA-Z0-9_\- ]', '', (name or f"Asset_{aid}"))[:50].strip() or f"Asset_{aid}"
@@ -163,7 +152,7 @@ async def main():
             raw_file = DL_DIR / f"{aid}_raw"
             ok = await download_asset(session, aid, headers, raw_file)
             if not ok:
-                results.append({"id": aid, "status": "error", "error": "Download failed"})
+                results.append({"id": aid, "status": "error", "error": "Gagal download aset asli dari Roblox (Cek cookie bot tumbal)"})
                 continue
 
             name, detected_type = await get_asset_details(session, aid, headers)
@@ -188,7 +177,7 @@ async def main():
             if new_id:
                 results.append({"id": aid, "name": name or f"Asset_{aid}", "asset_type": asset_type, "new_id": str(new_id), "status": "completed"})
             else:
-                results.append({"id": aid, "name": name or f"Asset_{aid}", "asset_type": asset_type, "status": "error", "error": "Upload failed"})
+                results.append({"id": aid, "name": name or f"Asset_{aid}", "asset_type": asset_type, "status": "error", "error": "Gagal upload ke Roblox (Cek API Key & Creator ID di Setup)"})
 
     print(json.dumps(results))
 
@@ -250,6 +239,7 @@ def main():
                     "size": sz
                 }))
                 return
+        print(json.dumps({"success": False, "error": "File audio tidak ditemukan setelah diunduh."}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
 
@@ -260,10 +250,11 @@ if __name__ == '__main__':
 }
 
 const server = http.createServer((req, res) => {
-    // Enable CORS
+    console.log(`[Termux Bridge] ${req.method} ${req.url}`);
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-termux-bridge');
 
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -271,28 +262,29 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (req.method === 'GET' && req.url === '/api/ping') {
+    const reqUrl = req.url.split('?')[0];
+
+    if (req.method === 'GET' && (reqUrl === '/api/ping' || reqUrl === '/ping')) {
         let hasCookie = false;
-        let hasApiKey = false;
         if (fs.existsSync(CONFIG_FILE)) {
             try {
                 const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
                 hasCookie = !!cfg.cookie;
-                hasApiKey = !!cfg.api_key;
             } catch (e) {}
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, version: "2.0.0", hasCookie, hasApiKey }));
+        res.end(JSON.stringify({ ok: true, version: "2.1.0", hasCookie }));
         return;
     }
 
-    if (req.method === 'POST' && req.url === '/api/yt-download') {
+    if (req.method === 'POST' && (reqUrl === '/api/yt-download' || reqUrl === '/yt-download')) {
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', () => {
             ensureYTRunner();
             let parsed = {};
             try { parsed = JSON.parse(body); } catch(e) {}
+            console.log(`[Termux Bridge] Downloading YouTube: ${parsed.url}`);
             const proc = spawn('python3', [YT_SCRIPT, JSON.stringify(parsed)]);
             let stdout = '', stderr = '';
             proc.stdout.on('data', d => stdout += d.toString());
@@ -300,9 +292,11 @@ const server = http.createServer((req, res) => {
             proc.on('close', code => {
                 const match = stdout.match(/\{[\s\S]*"success"[\s\S]*\}/);
                 if (match) {
+                    console.log(`[Termux Bridge] YouTube download finished!`);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(match[0]);
                 } else {
+                    console.error(`[Termux Bridge] YouTube download failed: ${stderr || stdout}`);
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: stderr || stdout || 'Download failed' }));
                 }
@@ -311,13 +305,14 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    if (req.method === 'POST' && req.url === '/api/spoof') {
+    if (req.method === 'POST' && (reqUrl === '/api/spoof' || reqUrl === '/spoof')) {
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', () => {
             ensureSpoofRunner();
             let parsed = {};
             try { parsed = JSON.parse(body); } catch(e) {}
+            console.log(`[Termux Bridge] Spoof request for ${parsed.ids ? parsed.ids.length : 0} IDs`);
             const proc = spawn('python3', [SPOOF_SCRIPT, JSON.stringify(parsed)]);
             let stdout = '', stderr = '';
             proc.stdout.on('data', d => stdout += d.toString());
@@ -325,9 +320,11 @@ const server = http.createServer((req, res) => {
             proc.on('close', code => {
                 const match = stdout.match(/\[[\s\S]*\]/);
                 if (match) {
+                    console.log(`[Termux Bridge] Spoof completed successfully!`);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, results: JSON.parse(match[0]) }));
                 } else {
+                    console.error(`[Termux Bridge] Spoof runner error: ${stderr || stdout}`);
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: stderr || stdout || 'Spoofer error' }));
                 }
@@ -337,7 +334,7 @@ const server = http.createServer((req, res) => {
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: "Endpoint not found" }));
+    res.end(JSON.stringify({ error: `Endpoint not found: ${req.url}` }));
 });
 
 server.listen(PORT, () => {
