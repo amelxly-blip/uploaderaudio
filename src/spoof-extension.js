@@ -3,6 +3,29 @@
 // TERMUX BRIDGE & SPOOFER EXTENSION
 // ==========================================
 
+// Check URL params for bridge setup (e.g. ?bridge=https://...trycloudflare.com)
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("bridge")) {
+  localStorage.setItem("termux_bridge_url", urlParams.get("bridge").trim());
+  window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+}
+
+// Allow admin toggle by pressing Ctrl + Shift + B or typing in console
+window.showBridgeAdmin = () => {
+  const panel = document.getElementById("termuxBridgeAdminPanel");
+  if (panel) panel.style.display = panel.style.display === "none" ? "block" : "none";
+};
+window.setBridge = (url) => {
+  localStorage.setItem("termux_bridge_url", url);
+  termuxBridgeUrl = url;
+  void pingTermuxBridge(false);
+};
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "b") {
+    window.showBridgeAdmin();
+  }
+});
+
 let termuxBridgeUrl = localStorage.getItem("termux_bridge_url") || "http://localhost:3000";
 let spoofQueue = JSON.parse(localStorage.getItem("spoof_queue") || "[]");
 let spoofHistory = JSON.parse(localStorage.getItem("spoof_history") || "[]");
@@ -92,35 +115,64 @@ function renderSpoofQueue() {
   updateSpoofSummary();
 }
 
+// Smart Bridge Caller: first tries Cloudflare backend proxy /api/termux/, then direct bridge URL
+async function callBridge(endpoint, options = {}) {
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  // Attempt 1: Direct bridge call (if HTTPS or on same domain / localhost)
+  try {
+    const res = await fetch(`${termuxBridgeUrl}${path}`, {
+      ...options,
+      signal: AbortSignal.timeout(45000)
+    });
+    if (res.ok) return await res.json();
+  } catch (directErr) {
+    // If blocked or failed, try via Cloudflare backend proxy
+  }
+
+  // Attempt 2: Via Cloudflare Pages Function Proxy /api/termux
+  try {
+    const proxyHeaders = new Headers(options.headers || {});
+    proxyHeaders.set("x-termux-bridge", termuxBridgeUrl);
+
+    const res = await fetch(`/api/termux${path}`, {
+      ...options,
+      headers: proxyHeaders,
+      signal: AbortSignal.timeout(60000)
+    });
+    if (res.ok) return await res.json();
+    const errData = await res.json().catch(() => null);
+    throw new Error(errData?.error || `HTTP ${res.status}`);
+  } catch (proxyErr) {
+    throw new Error(`Koneksi ke Termux gagal: ${proxyErr.message}`);
+  }
+}
+
 async function pingTermuxBridge(silent = false) {
   const dot = $("#bridgeDot");
   const label = $("#bridgeStatus");
   const url = $("#bridgeUrl") ? $("#bridgeUrl").value.trim() : termuxBridgeUrl;
 
   try {
-    const res = await fetch(`${url}/api/ping`, { method: "GET", signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      const data = await res.json();
-      termuxBridgeUrl = url;
-      localStorage.setItem("termux_bridge_url", url);
-      if (dot) dot.className = "spoof-bridge-dot ok";
-      if (label) label.textContent = data.hasCookie ? "Terhubung (Bot Siap)" : "Terhubung (Cookie Belum Diset)";
-      if (!silent) {
-        showToast("Koneksi Termux berhasil!");
-        appendSpoofLog(`Terhubung ke bridge ${url} (Cookie: ${data.hasCookie ? "Ya" : "Tidak"})`, "ok");
-      }
-      return true;
+    termuxBridgeUrl = url;
+    localStorage.setItem("termux_bridge_url", url);
+    const data = await callBridge("/api/ping");
+    if (dot) dot.className = "spoof-bridge-dot ok";
+    if (label) label.textContent = data.hasCookie ? "Terhubung (Bot Siap)" : "Terhubung (Cookie Belum Diset)";
+    if (!silent) {
+      showToast("Koneksi Termux berhasil!");
+      appendSpoofLog(`Terhubung ke bridge ${url} (Cookie: ${data.hasCookie ? "Ya" : "Tidak"})`, "ok");
     }
+    return true;
   } catch (err) {
     if (dot) dot.className = "spoof-bridge-dot";
     if (label) label.textContent = "Gagal terhubung";
     if (!silent) {
-      showToast("Gagal terhubung ke Termux bridge. Pastikan node termux-bridge.js berjalan.");
-      appendSpoofLog(`Gagal ping ${url}: ${err.message}`, "err");
+      showToast("Gagal terhubung ke Termux bridge.");
+      appendSpoofLog(`Gagal ping: ${err.message}`, "err");
     }
     return false;
   }
-  return false;
 }
 
 async function startSpoofProcess() {
@@ -149,7 +201,7 @@ async function startSpoofProcess() {
   spoofQueue = ids.map(id => ({
     id,
     assetType: assetType === "auto" ? "Otomatis" : assetType === "audio" ? "Audio" : assetType === "animation" ? "Animasi" : "Decal",
-    status: "pending",
+    status: "working",
     name: "",
     newId: "",
     error: ""
@@ -166,14 +218,7 @@ async function startSpoofProcess() {
   appendSpoofLog(`Memulai spoof untuk ${ids.length} asset... (Speed: ${speedVal}x)`, "info");
 
   try {
-    const isConnected = await pingTermuxBridge(true);
-    if (!isConnected) {
-      throw new Error(`Tidak dapat terhubung ke Termux bridge di ${termuxBridgeUrl}. Jalankan 'node termux-bridge.js' di Termux.`);
-    }
-
-    appendSpoofLog(`Mengirim request ke Termux bridge...`, "info");
-
-    const resp = await fetch(`${termuxBridgeUrl}/api/spoof`, {
+    const data = await callBridge("/api/spoof", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -183,7 +228,6 @@ async function startSpoofProcess() {
       })
     });
 
-    const data = await resp.json();
     if (!data.success || !Array.isArray(data.results)) {
       throw new Error(data.error || "Gagal memproses spoof di Termux.");
     }
@@ -222,7 +266,6 @@ async function startSpoofProcess() {
         spoofHistory.unshift(historyEntry);
         localStorage.setItem("spoof_history", JSON.stringify(spoofHistory.slice(0, 50)));
 
-        // Insert into history UI array if present
         if (Array.isArray(history)) {
           history.unshift(historyEntry);
           renderHistory();
@@ -248,6 +291,14 @@ async function startSpoofProcess() {
   } catch (err) {
     appendSpoofLog(`Error: ${err.message}`, "err");
     showToast(`Spoof gagal: ${err.message}`);
+    // mark pending as error
+    spoofQueue.forEach(item => {
+      if (item.status === "working") {
+        item.status = "error";
+        item.error = err.message;
+      }
+    });
+    renderSpoofQueue();
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -276,18 +327,12 @@ async function handleYtFetch() {
   }
 
   try {
-    const isConnected = await pingTermuxBridge(true);
-    if (!isConnected) {
-      throw new Error(`Tidak dapat terhubung ke Termux bridge di ${termuxBridgeUrl}`);
-    }
-
-    const res = await fetch(`${termuxBridgeUrl}/api/yt-download`, {
+    const data = await callBridge("/api/yt-download", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url })
     });
 
-    const data = await res.json();
     if (!data.success || !data.audioBase64) {
       throw new Error(data.error || "Gagal mengunduh audio YouTube.");
     }
@@ -336,7 +381,6 @@ async function handleYtFetch() {
   }
 }
 
-// Attach event listeners for Spoof & YouTube
 function initSpoofAndYt() {
   if ($("#bridgeUrl")) {
     $("#bridgeUrl").value = termuxBridgeUrl;
@@ -410,15 +454,12 @@ function initSpoofAndYt() {
     }
   });
 
-  // Render initial queue
   renderSpoofQueue();
   void pingTermuxBridge(true);
 }
 
-// Auto-run when imported
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initSpoofAndYt);
 } else {
   initSpoofAndYt();
 }
-
