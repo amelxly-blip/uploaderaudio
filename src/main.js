@@ -1,4 +1,4 @@
-import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
+﻿import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
 import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
 import {
@@ -18,7 +18,7 @@ import { getNextQuotaResetAt } from "../supabase/functions/_shared/quota-window.
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
-const tabs = ["home", "upload", "skybox", "setup", "history"];
+const tabs = ["home", "upload", "spoof", "skybox", "setup", "history"];
 const VIP_WHATSAPP_NUMBER = "6282174905591";
 const MAX_UPLOAD_QUEUE_SIZE = 10;
 const MAX_SKYBOX_INPUT_SIZE = 20 * 1024 * 1024;
@@ -277,7 +277,10 @@ function renderMembership() {
   }
   $("#totalVisitors").textContent = formatCount(statistics?.totalVisitors);
   $("#totalVip").textContent = formatCount(statistics?.totalVip);
-  $("#totalUploads").textContent = formatCount(statistics?.totalUploads);
+    const localSpoofCount = Number(localStorage.getItem("total_spoofs_count") || "0");
+  const combinedUploads = (statistics?.totalUploads || 0) + localSpoofCount;
+  $("#totalUploads").textContent = formatCount(combinedUploads);
+  if ($("#totalSpoofs")) $("#totalSpoofs").textContent = formatCount(localSpoofCount);
 }
 
 function updatePlaybackSpeedHelp() {
@@ -319,7 +322,7 @@ function navigate(tab) {
   $$("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.body.classList.toggle("skybox-wide", tab === "skybox");
   if (tab === "skybox") resizeSkyboxScene();
-  $("#topbarLabel").textContent = `AUDIO WORKSPACE / ${({ home: "BERANDA", upload: "UPLOAD", skybox: "SKYBOX", setup: "SETUP ROBLOX", history: "RIWAYAT" })[tab]}`;
+  $("#topbarLabel").textContent = `AUDIO WORKSPACE / ${({ home: "BERANDA", upload: "UPLOAD", spoof: "SPOOF ASSET", skybox: "SKYBOX", setup: "SETUP ROBLOX", history: "RIWAYAT" })[tab]}`;
   if (tab === "history") void loadHistory();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2190,3 +2193,6 @@ setTimeout(() => {
     boot.setAttribute("aria-hidden", "true");
   }, 600);
 }, 550);
+
+// Initialize Spoof & YouTube integration
+import('./spoof-extension.js').then(m => { /* dynamic load */ });
