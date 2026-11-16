@@ -1,4 +1,4 @@
-﻿import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
+import { getCompensationSpeed, processAudioForPlaybackSpeed } from "./audio-processing.js";
 import { filterUploadHistory } from "./history-filter.js";
 import { getMembershipBadge } from "./membership-badge.js";
 import {
@@ -277,9 +277,9 @@ function renderMembership() {
   }
   $("#totalVisitors").textContent = formatCount(statistics?.totalVisitors);
   $("#totalVip").textContent = formatCount(statistics?.totalVip);
-    const localSpoofCount = Number(localStorage.getItem("total_spoofs_count") || "0");
-  const combinedUploads = (statistics?.totalUploads || 0) + localSpoofCount;
-  $("#totalUploads").textContent = formatCount(combinedUploads);
+  $("#totalUploads").textContent = formatCount(statistics?.totalUploads);
+  const localSpoofCount = Number(localStorage.getItem("total_spoofs_count") || "0");
+  if ($("#totalSpoofs")) $("#totalSpoofs").textContent = formatCount(localSpoofCount);
   if ($("#totalSpoofs")) $("#totalSpoofs").textContent = formatCount(localSpoofCount);
 }
 
